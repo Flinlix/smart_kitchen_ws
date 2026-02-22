@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 1000  # Hz
+    update_rate: 500  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -10,6 +10,9 @@ controller_manager:
 
     robotiq_gripper_controller:
       type: parallel_gripper_action_controller/GripperActionController
+
+    rail_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
 
 joint_trajectory_controller:
   ros__parameters:
@@ -36,3 +39,21 @@ robotiq_gripper_controller:
   ros__parameters:
     joint: robotiq_85_left_knuckle_joint
     allow_stalling: true
+
+rail_trajectory_controller:
+  ros__parameters:
+    joints:
+      - rail_x_joint
+      - rail_y_joint
+      - rail_z_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: true
+    constraints:
+      stopped_velocity_tolerance: 0.0
+      goal_time: 0.0

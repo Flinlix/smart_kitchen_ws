@@ -27,6 +27,7 @@ setup(
             'controller = smart_kitchen_logic.robot_mover_node:main',
             'fake_human = smart_kitchen_logic.fake_human:main',
             'safety_monitor = smart_kitchen_logic.safety_monitor:main',
+            'rail_node = smart_kitchen_logic.rail_node:main',
         ],
     },
 )

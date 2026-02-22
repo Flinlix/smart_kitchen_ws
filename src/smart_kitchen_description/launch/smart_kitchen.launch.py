@@ -175,6 +175,13 @@ def launch_setup(context, *args, **kwargs):
     if robot_model == "gen3_lite":
         is_gen3_lite = "true"
 
+    rail_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["rail_trajectory_controller", "-c", "/controller_manager",
+                   "--controller-manager-timeout", "30"],
+    )
+
     robot_hand_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -299,18 +306,36 @@ def launch_setup(context, *args, **kwargs):
                             [
                                 joint_state_broadcaster_spawner,
                                 robot_traj_controller_spawner,
+                                rail_controller_spawner,
                                 robot_hand_controller_spawner,
                                 robot_hand_lite_controller_spawner,
                                 delay_rviz_after_joint_state_broadcaster_spawner,
+                                Node(
+                                    package="smart_kitchen_logic",
+                                    executable="rail_node",
+                                    output="screen",
+                                    emulate_tty=True,
+                                    respawn=True,
+                                    respawn_delay=2.0,
+                                ),
                             ]
                             if sim_gazebo.perform(context).lower() == "true"
                             else [
                                 joint_state_broadcaster_spawner,
                                 robot_traj_controller_spawner,
+                                rail_controller_spawner,
                                 robot_pos_controller_spawner,
                                 robot_hand_controller_spawner,
                                 robot_hand_lite_controller_spawner,
                                 delay_rviz_after_joint_state_broadcaster_spawner,
+                                Node(
+                                    package="smart_kitchen_logic",
+                                    executable="rail_node",
+                                    output="screen",
+                                    emulate_tty=True,
+                                    respawn=True,
+                                    respawn_delay=2.0,
+                                ),
                             ]
                         ),
                     )

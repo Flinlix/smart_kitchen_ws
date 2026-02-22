@@ -1,22 +1,157 @@
 <?xml version="1.0"?>
 <robot name="smart_kitchen_kinova" xmlns:xacro="http://ros.org/wiki/xacro">
 
-  <xacro:arg name="arm" default="gen3" />
-  <xacro:arg name="dof" default="6" />
-  <xacro:arg name="vision" default="true" />
-  <xacro:arg name="gripper" default="robotiq_2f_85" />
-  <xacro:arg name="sim" default="true" />
-  <xacro:arg name="sim_gazebo" default="false" />
-  <xacro:arg name="prefix" default="" />
-  <xacro:arg name="simulation_controllers" default="" />
-  <xacro:arg name="gazebo_renderer" default="ogre2" />
+  <!-- ── Robot arm arguments (mirror gen3.xacro) ─────────────────────── -->
+  <xacro:arg name="arm"                              default="gen3" />
+  <xacro:arg name="dof"                              default="6" />
+  <xacro:arg name="vision"                           default="false" />
+  <xacro:arg name="gripper"                          default="robotiq_2f_85" />
+  <xacro:arg name="sim_gazebo"                       default="false" />
+  <xacro:arg name="prefix"                           default="" />
+  <xacro:arg name="simulation_controllers"           default="" />
+  <xacro:arg name="gazebo_renderer"                  default="ogre2" />
+  <xacro:arg name="robot_ip"                         default="192.168.11.11" />
+  <xacro:arg name="name"                             default="gen3" />
+  <xacro:arg name="username"                         default="admin" />
+  <xacro:arg name="password"                         default="admin" />
+  <xacro:arg name="port"                             default="10000" />
+  <xacro:arg name="port_realtime"                    default="10001" />
+  <xacro:arg name="session_inactivity_timeout_ms"    default="60000" />
+  <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
+  <xacro:arg name="initial_positions_file"
+    default="$(find kortex_description)/config/initial_positions.yaml" />
 
-  <xacro:include filename="$(find kortex_description)/robots/gen3.xacro" />
+  <!-- ── Load kortex_robot macro ─────────────────────────────────────── -->
+  <xacro:include filename="$(find kortex_description)/robots/kortex_robot.xacro" />
+  <xacro:property name="initial_positions_file"
+    default="$(arg initial_positions_file)" />
 
-  <!-- ===== gz_ros2_control Gazebo system plugin ===== -->
+  <!-- ── World frame (spawn pose applied here by gz_spawn_entity) ─────── -->
+  <link name="world" />
+
+  <!-- 
+       Three prismatic joints:
+       Controlled via /rail/x/position/set, /rail/y/position/set,
+       /rail/z/position/set  (std_msgs/Float32).
+  -->
+
+  <!-- Fixed anchor so bullet-featherstone can attach model to world -->
+  <link name="rail_base_link">
+    <inertial>
+      <mass value="1.0" />
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+    </inertial>
+  </link>
+  <joint name="rail_base_fixed" type="fixed">
+    <parent link="world" />
+    <child  link="rail_base_link" />
+  </joint>
+
+  <!-- Rail X link & joint -->
+  <link name="rail_x_link">
+    <inertial>
+      <mass value="0.1" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="rail_x_joint" type="prismatic">
+    <parent link="rail_base_link" />
+    <child  link="rail_x_link" />
+    <axis xyz="1 0 0" />
+    <limit lower="-2.0" upper="2.0" effort="500" velocity="1.0" />
+    <dynamics damping="10.0" friction="0.5" />
+  </joint>
+
+  <!-- Rail Y link & joint -->
+  <link name="rail_y_link">
+    <inertial>
+      <mass value="0.1" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="rail_y_joint" type="prismatic">
+    <parent link="rail_x_link" />
+    <child  link="rail_y_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.0" upper="2.0" effort="500" velocity="1.0" />
+    <dynamics damping="10.0" friction="0.5" />
+  </joint>
+
+  <!-- Rail Z link & joint -->
+  <link name="rail_z_link">
+    <inertial>
+      <mass value="0.1" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="rail_z_joint" type="prismatic">
+    <parent link="rail_y_link" />
+    <child  link="rail_z_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.5" upper="0.5" effort="500" velocity="1.0" />
+    <dynamics damping="10.0" friction="0.5" />
+  </joint>
+
+  <!-- ── ros2_control hardware block for the rail joints ─────────────── -->
+  <ros2_control name="RailSystem" type="system">
+    <hardware>
+      <xacro:if value="$(arg sim_gazebo)">
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </xacro:if>
+      <xacro:unless value="$(arg sim_gazebo)">
+        <plugin>mock_components/GenericSystem</plugin>
+      </xacro:unless>
+    </hardware>
+    <joint name="rail_x_joint">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity" />
+    </joint>
+    <joint name="rail_y_joint">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity" />
+    </joint>
+    <joint name="rail_z_joint">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity" />
+    </joint>
+  </ros2_control>
+
+  <!-- ── Arm — attached to the end of the rail chain ─────────────────── -->
+  <xacro:load_robot
+    parent="rail_z_link"
+    arm="$(arg arm)"
+    gripper="$(arg gripper)"
+    gripper_joint_name="finger_joint"
+    dof="$(arg dof)"
+    vision="$(arg vision)"
+    robot_ip="$(arg robot_ip)"
+    username="$(arg username)"
+    password="$(arg password)"
+    port="$(arg port)"
+    port_realtime="$(arg port_realtime)"
+    session_inactivity_timeout_ms="$(arg session_inactivity_timeout_ms)"
+    connection_inactivity_timeout_ms="$(arg connection_inactivity_timeout_ms)"
+    prefix="$(arg prefix)"
+    use_fake_hardware="false"
+    fake_sensor_commands="false"
+    sim_gazebo="$(arg sim_gazebo)"
+    sim_isaac="false"
+    initial_positions="${xacro.load_yaml(initial_positions_file)}">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:load_robot>
+
+  <!-- ── gz_ros2_control Gazebo system plugin ─────────────────────────── -->
   <xacro:if value="$(arg sim_gazebo)">
-    <gazebo reference="world">
-    </gazebo>
+    <gazebo reference="world" />
     <gazebo>
       <plugin filename="gz_ros2_control-system"
               name="gz_ros2_control::GazeboSimROS2ControlPlugin">
@@ -26,28 +161,29 @@
     </gazebo>
   </xacro:if>
 
+  <!-- ── Human obstacle (fixed at 0.8 m in front of the counter) ──────── -->
   <link name="human_link">
     <visual>
       <geometry>
-        <cylinder radius="0.25" length="1.8"/>
+        <cylinder radius="0.25" length="1.8" />
       </geometry>
-      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+      <origin xyz="0 0 0.9" rpy="0 0 0" />
       <material name="red">
-        <color rgba="1.0 0.0 0.0 1.0"/>
+        <color rgba="1.0 0.0 0.0 1.0" />
       </material>
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.25" length="1.8"/>
+        <cylinder radius="0.25" length="1.8" />
       </geometry>
-      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+      <origin xyz="0 0 0.9" rpy="0 0 0" />
     </collision>
   </link>
 
   <joint name="world_to_human" type="fixed">
-    <parent link="world"/>
-    <child link="human_link"/>
-    <origin xyz="0.8 0 0" rpy="0 0 0"/>
+    <parent link="world" />
+    <child  link="human_link" />
+    <origin xyz="0.8 0 0" rpy="0 0 0" />
   </joint>
 
   <gazebo reference="human_link">
