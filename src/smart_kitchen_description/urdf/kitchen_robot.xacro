@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<robot name="smart_kitchen_kinova" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:arg name="arm" default="gen3" />
+  <xacro:arg name="dof" default="6" />
+  <xacro:arg name="vision" default="true" />
+  <xacro:arg name="gripper" default="robotiq_2f_85" />
+  <xacro:arg name="sim" default="true" />
+  <xacro:arg name="sim_gazebo" default="false" />
+  <xacro:arg name="prefix" default="" />
+  <xacro:arg name="simulation_controllers" default="" />
+  <xacro:arg name="gazebo_renderer" default="ogre2" />
+
+  <xacro:include filename="$(find kortex_description)/robots/gen3.xacro" />
+
+  <!-- ===== gz_ros2_control Gazebo system plugin ===== -->
+  <xacro:if value="$(arg sim_gazebo)">
+    <gazebo reference="world">
+    </gazebo>
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(arg simulation_controllers)</parameters>
+        <controller_manager_node_name>$(arg prefix)controller_manager</controller_manager_node_name>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+  <link name="human_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.25" length="1.8"/>
+      </geometry>
+      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+      <material name="red">
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.25" length="1.8"/>
+      </geometry>
+      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+    </collision>
+  </link>
+
+  <joint name="world_to_human" type="fixed">
+    <parent link="world"/>
+    <child link="human_link"/>
+    <origin xyz="0.8 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="human_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+
+</robot>

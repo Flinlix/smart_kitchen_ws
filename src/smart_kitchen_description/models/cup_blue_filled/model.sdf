@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="cup_blue_filled">
+    <static>false</static>
+    <allow_auto_disable>true</allow_auto_disable>
+    <link name="link">
+      <inertial>
+        <mass>0.280</mass>
+        <pose>0 0 0.05725 0 0 0</pose>
+        <inertia>
+          <ixx>4.6054e-4</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>4.6054e-4</iyy>
+          <iyz>0</iyz>
+          <izz>3.0926e-4</izz>
+        </inertia>
+      </inertial>
+      <linear_damping>0.1</linear_damping>
+      <angular_damping>0.1</angular_damping>
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://cup_blue_filled/meshes/cup_blue_filled.obj</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0.05725 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.047</radius>
+            <length>0.1145</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <bounce>
+            <restitution_coefficient>0.0</restitution_coefficient>
+            <threshold>1e6</threshold>
+          </bounce>
+          <friction>
+            <ode>
+              <mu>0.6</mu>
+              <mu2>0.6</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <max_vel>0.01</max_vel>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
+      </collision>
+    </link>
+  </model>
+</sdf>

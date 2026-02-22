@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<robot name="static_human">
+  <link name="human_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.25" length="2.0"/>
+      </geometry>
+      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+      <material name="red">
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.25" length="2.0"/>
+      </geometry>
+      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="70.0"/>
+      <origin xyz="0 0 0.9" rpy="0 0 0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <gazebo>
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <update_frequency>10.0</update_frequency>
+    </plugin>
+    <material>Gazebo/Red</material>
+  </gazebo>
+</robot>
