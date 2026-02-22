@@ -92,6 +92,21 @@
     <dynamics damping="10.0" friction="0.5" />
   </joint>
 
+  <!-- Rail Yaw link & joint (rotation around Z) -->
+  <link name="rail_yaw_link">
+    <inertial>
+      <mass value="0.1" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="rail_yaw_joint" type="revolute">
+    <parent link="rail_z_link" />
+    <child  link="rail_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159" upper="3.14159" effort="500" velocity="1.0" />
+    <dynamics damping="10.0" friction="0.5" />
+  </joint>
+
   <!-- ── ros2_control hardware block for the rail joints ─────────────── -->
   <ros2_control name="RailSystem" type="system">
     <hardware>
@@ -123,11 +138,18 @@
       </state_interface>
       <state_interface name="velocity" />
     </joint>
+    <joint name="rail_yaw_joint">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity" />
+    </joint>
   </ros2_control>
 
   <!-- ── Arm — attached to the end of the rail chain ─────────────────── -->
   <xacro:load_robot
-    parent="rail_z_link"
+    parent="rail_yaw_link"
     arm="$(arg arm)"
     gripper="$(arg gripper)"
     gripper_joint_name="finger_joint"

@@ -20,7 +20,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 
 
-JOINT_NAMES = ['rail_x_joint', 'rail_y_joint', 'rail_z_joint']
+JOINT_NAMES = ['rail_x_joint', 'rail_y_joint', 'rail_z_joint', 'rail_yaw_joint']
 CONTROLLER_TOPIC = '/rail_trajectory_controller/joint_trajectory'
 
 # How long the controller should take to reach the commanded position (s)
@@ -31,8 +31,8 @@ class RailNode(Node):
     def __init__(self):
         super().__init__('rail_node')
 
-        # Current commanded positions (start at 0)
-        self._positions = [0.0, 0.0, 0.0]
+        # Current commanded positions (start at 0): x, y, z, yaw
+        self._positions = [0.0, 0.0, 0.0, 0.0]
 
         # Publisher: rail_trajectory_controller
         self._pub = self.create_publisher(JointTrajectory, CONTROLLER_TOPIC, 10)
@@ -44,12 +44,15 @@ class RailNode(Node):
                                  lambda msg: self._on_set(1, msg), 10)
         self.create_subscription(Float32, '/rail/z/position/set',
                                  lambda msg: self._on_set(2, msg), 10)
+        self.create_subscription(Float32, '/rail/yaw/position/set',
+                                 lambda msg: self._on_set(3, msg), 10)
 
         self.get_logger().info(
             'Rail node ready.\n'
-            '  /rail/x/position/set  →  rail_x_joint\n'
-            '  /rail/y/position/set  →  rail_y_joint\n'
-            '  /rail/z/position/set  →  rail_z_joint'
+            '  /rail/x/position/set    →  rail_x_joint\n'
+            '  /rail/y/position/set    →  rail_y_joint\n'
+            '  /rail/z/position/set    →  rail_z_joint\n'
+            '  /rail/yaw/position/set  →  rail_yaw_joint'
         )
 
     def _on_set(self, axis: int, msg: Float32):
@@ -61,18 +64,20 @@ class RailNode(Node):
 
         pt = JointTrajectoryPoint()
         pt.positions = list(self._positions)
-        pt.velocities = [0.0, 0.0, 0.0]
+        pt.velocities = [0.0, 0.0, 0.0, 0.0]
         pt.time_from_start = Duration(sec=MOVE_DURATION_SEC, nanosec=0)
 
         traj.points.append(pt)
         self._pub.publish(traj)
 
-        axis_name = ['x', 'y', 'z'][axis]
+        axis_name = ['x', 'y', 'z', 'yaw'][axis]
+        unit = 'rad' if axis == 3 else 'm'
         self.get_logger().info(
-            f'Rail command → {axis_name}={msg.data:.4f} m  '
-            f'(full: x={self._positions[0]:.4f}, '
-            f'y={self._positions[1]:.4f}, '
-            f'z={self._positions[2]:.4f})'
+            f'Rail command → {axis_name}={msg.data:.4f} {unit}  '
+            f'(full: x={self._positions[0]:.4f}m, '
+            f'y={self._positions[1]:.4f}m, '
+            f'z={self._positions[2]:.4f}m, '
+            f'yaw={self._positions[3]:.4f}rad)'
         )
 
 

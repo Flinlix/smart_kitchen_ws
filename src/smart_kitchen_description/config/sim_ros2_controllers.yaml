@@ -46,6 +46,7 @@ rail_trajectory_controller:
       - rail_x_joint
       - rail_y_joint
       - rail_z_joint
+      - rail_yaw_joint
     command_interfaces:
       - position
     state_interfaces:
