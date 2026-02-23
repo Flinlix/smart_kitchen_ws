@@ -152,7 +152,7 @@
     parent="rail_yaw_link"
     arm="$(arg arm)"
     gripper="$(arg gripper)"
-    gripper_joint_name="finger_joint"
+    gripper_joint_name="robotiq_85_left_knuckle_joint"
     dof="$(arg dof)"
     vision="$(arg vision)"
     robot_ip="$(arg robot_ip)"
@@ -179,6 +179,7 @@
               name="gz_ros2_control::GazeboSimROS2ControlPlugin">
         <parameters>$(arg simulation_controllers)</parameters>
         <controller_manager_node_name>$(arg prefix)controller_manager</controller_manager_node_name>
+        <position_proportional_gain>1.5</position_proportional_gain>
       </plugin>
     </gazebo>
   </xacro:if>

@@ -9,7 +9,7 @@ controller_manager:
       type: joint_trajectory_controller/JointTrajectoryController
 
     robotiq_gripper_controller:
-      type: parallel_gripper_action_controller/GripperActionController
+      type: position_controllers/GripperActionController
 
     rail_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
