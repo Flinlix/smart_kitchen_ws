@@ -236,7 +236,7 @@ def launch_setup(context, *args, **kwargs):
             "-P",
             "0.0",
             "-Y",
-            "0.0",
+            "-1.5708",
         ],
         condition=IfCondition(sim_gazebo),
     )
