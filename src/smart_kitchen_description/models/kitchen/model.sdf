@@ -11,11 +11,12 @@
           </mesh>
         </geometry>
       </visual>
-      <!-- Counter cabinet: x=[-0.362,0.263] y=[-0.256,2.494] top at z=0.890 -->
-      <collision name="collision_counter">
-        <pose>-0.0495 1.119 0.445 0 0 0</pose>
+      <collision name="collision">
         <geometry>
-          <box><size>0.625 2.75 0.890</size></box>
+          <mesh>
+            <uri>model://kitchen/meshes/kitchen.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
         </geometry>
         <surface>
           <friction>

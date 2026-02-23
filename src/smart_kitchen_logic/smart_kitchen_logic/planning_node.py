@@ -13,12 +13,20 @@ import threading
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
+from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseArray, Pose
 from std_msgs.msg import Bool
+from control_msgs.action import GripperCommand as GripperCommandAction
 
 HOME_POSITION = (0.0, 0.0, 0.0)
 
 MOVE_TIMEOUT_SEC = 30.0
+GRIP_TIMEOUT_SEC = 15.0
+
+GRIPPER_CLOSED = 0.7
+GRIPPER_OPEN = 0.0
+GRIPPER_MAX_EFFORT = 50.0
 
 
 class PlanningNode(Node):
@@ -38,6 +46,13 @@ class PlanningNode(Node):
         self._move_done = threading.Event()
         self.create_subscription(
             Bool, '/move_robot_result', self._on_move_result, 10)
+
+        # gripper action client
+        self._gripper_client = ActionClient(
+            self, GripperCommandAction,
+            '/robotiq_gripper_controller/gripper_cmd')
+        self._grip_done = threading.Event()
+        self._grip_success = False
 
         self.get_logger().info('Planning node started. Waiting for cup positions...')
 
@@ -86,6 +101,9 @@ class PlanningNode(Node):
             # Step 4: move robot back to home
             self._move_robot(*HOME_POSITION)
 
+            # Step 5: release the cup
+            self._release()
+
             self.get_logger().info(f'Cup {i} pickup complete.')
 
         self.get_logger().info('All cups processed.')
@@ -121,6 +139,56 @@ class PlanningNode(Node):
             f'Move to ({x:.3f}, {y:.3f}, {z:.3f}) complete.')
         return True
 
+    # ── gripper (via robotiq_gripper_controller action) ─────────────────
+
+    def _send_gripper_goal(self, position: float, label: str) -> bool:
+        """Send a GripperCommand goal and block until it finishes."""
+        if not self._gripper_client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error('Gripper action server not available!')
+            return False
+
+        goal = GripperCommandAction.Goal()
+        goal.command.position = position
+        goal.command.max_effort = GRIPPER_MAX_EFFORT
+
+        self._grip_done.clear()
+        self._grip_success = False
+
+        self.get_logger().info(f'{label} (position={position:.2f}) ...')
+        future = self._gripper_client.send_goal_async(goal)
+        future.add_done_callback(self._gripper_goal_response)
+
+        if not self._grip_done.wait(timeout=GRIP_TIMEOUT_SEC):
+            self.get_logger().error(f'{label} timed out!')
+            return False
+
+        return self._grip_success
+
+    def _gripper_goal_response(self, future) -> None:
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().error('Gripper goal rejected.')
+            self._grip_done.set()
+            return
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._gripper_result)
+
+    def _gripper_result(self, future) -> None:
+        status = future.result().status
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self._grip_success = True
+        else:
+            self.get_logger().warn(f'Gripper finished with status {status}.')
+        self._grip_done.set()
+
+    def _grip(self) -> bool:
+        """Close the gripper to grasp a cup."""
+        return self._send_gripper_goal(GRIPPER_CLOSED, 'Closing gripper')
+
+    def _release(self) -> bool:
+        """Open the gripper to release a cup."""
+        return self._send_gripper_goal(GRIPPER_OPEN, 'Opening gripper')
+
     # ── mock helpers (replace with real service calls later) ──────────────
 
     def _check_safety(self, x: float, y: float, z: float) -> bool:
@@ -129,12 +197,6 @@ class PlanningNode(Node):
             f'[MOCK safety] Checking ({x:.3f}, {y:.3f}, {z:.3f}) -> safe')
         time.sleep(0.5)
         return True
-
-    def _grip(self) -> None:
-        """Mock gripper – simulates gripping."""
-        self.get_logger().info('[MOCK grip] Gripping cup ...')
-        time.sleep(1.0)
-        self.get_logger().info('[MOCK grip] Cup gripped.')
 
 
 def main(args=None):
