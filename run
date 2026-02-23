@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "=== Building smart_kitchen_description and smart_kitchen_logic ==="
+colcon build --symlink-install --packages-select smart_kitchen_description smart_kitchen_logic
+
+echo "=== Sourcing workspace ==="
+source install/setup.bash
+
+echo "=== Launching smart_kitchen ==="
+ros2 launch smart_kitchen_description smart_kitchen.launch.py "$@"
