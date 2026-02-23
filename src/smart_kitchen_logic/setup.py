@@ -29,6 +29,8 @@ setup(
             'safety_monitor = smart_kitchen_logic.safety_monitor:main',
             'fake_rail_node = smart_kitchen_logic.fake_rail_node:main',
             'cup_node = smart_kitchen_logic.cup_node:main',
+            'planning_node = smart_kitchen_logic.planning_node:main',
+            'moving_node = smart_kitchen_logic.moving_node:main',
         ],
     },
 )

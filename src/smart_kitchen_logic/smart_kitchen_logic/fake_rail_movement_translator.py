@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Rail position relay node:
+Rail movement translator node:
 
-Subscribes to three Float32 topics (one per axis) and forwards the
-commanded positions to the rail_trajectory_controller.
+Subscribes to   "/elmo/id1/carriage/position/set std_msgs/msg/Float32"
+and             "/elmo/id1/lift/position/set std_msgs/msg/Float32"
 
-Topics (in):
-  /rail/x/position/set  (std_msgs/Float32)
-  /rail/y/position/set  (std_msgs/Float32)
-  /rail/z/position/set  (std_msgs/Float32)
+then translates this input and publishes to
 
-The Float32 value is used directly as the joint position in metres.
+"/rail/x/position/set",
+"/rail/y/position/set",
+"/rail/z/position/set", and
+"/rail/yaw/position/set" (std_msgs/msg/Float32)
 """
 
 import rclpy
@@ -27,33 +27,16 @@ CONTROLLER_TOPIC = '/rail_trajectory_controller/joint_trajectory'
 MOVE_DURATION_SEC = 2
 
 
-class RailNode(Node):
+class FakeRailNode(Node):
     def __init__(self):
-        super().__init__('rail_node')
+        super().__init__('fake_rail_movement_translator')
 
-        # Current commanded positions (start at 0): x, y, z, yaw
-        self._positions = [0.0, 0.0, 0.0, 0.0]
+        # Publisher
+        self._pub_x = self.create_publisher(Float32, '/rail/x/position/set', 10)
 
-        # Publisher: rail_trajectory_controller
-        self._pub = self.create_publisher(JointTrajectory, CONTROLLER_TOPIC, 10)
-
-        # One subscriber per axis
-        self.create_subscription(Float32, '/rail/x/position/set',
+        # Subscribers for the input topics
+        self.create_subscription(Float32, '/elmo/id1/carriage/position/set',
                                  lambda msg: self._on_set(0, msg), 10)
-        self.create_subscription(Float32, '/rail/y/position/set',
-                                 lambda msg: self._on_set(1, msg), 10)
-        self.create_subscription(Float32, '/rail/z/position/set',
-                                 lambda msg: self._on_set(2, msg), 10)
-        self.create_subscription(Float32, '/rail/yaw/position/set',
-                                 lambda msg: self._on_set(3, msg), 10)
-
-        self.get_logger().info(
-            'Rail node ready.\n'
-            '  /rail/x/position/set    →  rail_x_joint\n'
-            '  /rail/y/position/set    →  rail_y_joint\n'
-            '  /rail/z/position/set    →  rail_z_joint\n'
-            '  /rail/yaw/position/set  →  rail_yaw_joint'
-        )
 
     def _on_set(self, axis: int, msg: Float32):
         """Receive a position command for one axis and publish a trajectory."""
@@ -83,7 +66,7 @@ class RailNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = RailNode()
+    node = FakeRailNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
