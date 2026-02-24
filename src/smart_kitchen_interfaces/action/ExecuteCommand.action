@@ -1,0 +1,12 @@
+string command_name                    # e.g., "pick_cup", "drop_cup"
+string[] cup_ids              # e.g., ["cup_1"]
+---
+# Result: final status
+bool success
+string message
+---
+# Feedback: execution progress
+string current_waypoint
+int32 waypoint_index
+int32 total_waypoints
+float32 progress_percent

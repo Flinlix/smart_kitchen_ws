@@ -1,0 +1,38 @@
+gripper_open = 0.0
+gripper_close = 0.5
+
+[pre_pick_old]
+joints = [-1.142882, -1.219199, -1.345714, 0.989958, -1.410006, -1.670422]
+time_from_start = 3.0
+carriage = 0.1000
+lift = 0.4000
+
+[home_old]
+joints = [0.002231, -1.216090, -1.385489, -0.065738, -1.383703, -1.551807]
+time_from_start = 3.0
+carriage = 0.1000
+lift = 0.4000
+
+[home]
+joints = [-0.22068, -0.02929, -0.67624, 0.51033, -1.11741, -1.88689]
+time_from_start = 3.0
+carriage = 1.000
+lift = 0.25
+
+[pick]
+joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
+time_from_start = 3.0
+carriage = 0.65
+lift = 0.43
+
+[carry]
+joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
+time_from_start = 3.0
+carriage = 0.65
+lift = 0.3
+
+[sink]
+joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
+time_from_start = 3.0
+carriage = -0.3
+lift = 0.3

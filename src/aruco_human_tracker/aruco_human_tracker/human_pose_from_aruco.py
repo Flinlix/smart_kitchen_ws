@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped
-from aruco_opencv_msgs.msg import ArucoDetection
+from aruco_opencv_msgs.msg import ArucoDetection, MarkerPose
 
 from tf2_ros import Buffer, TransformListener
 from tf2_ros import TransformException
@@ -18,8 +18,9 @@ class HumanPoseFromAruco(Node):
       /aruco_detections (aruco_opencv_msgs/ArucoDetection)
 
     Publishes:
-      /human_pose (geometry_msgs/PoseStamped) in target_frame (default: base_link)
-
+      /aruco_pose (aruco_opencv_msgs/ArucoDetection) in target_frame (default: base_link)
+                  Contains a single MarkerPose entry with the matched marker_id and transformed pose.
+    NOTE: Publishes the marker_id and the pose of the aruco marker transformed to the base_link frame.
     Picks the marker with marker_id (default: 0). If not present -> publishes nothing.
     """
 
@@ -30,7 +31,7 @@ class HumanPoseFromAruco(Node):
         self.declare_parameter("detections_topic", "/aruco_detections")
         self.declare_parameter("marker_id", 0)
         self.declare_parameter("target_frame", "base_link")
-        self.declare_parameter("output_topic", "/human_pose")
+        self.declare_parameter("output_topic", "/aruco_pose")
 
         self.detections_topic = self.get_parameter("detections_topic").value
         self.marker_id = int(self.get_parameter("marker_id").value)
@@ -42,7 +43,7 @@ class HumanPoseFromAruco(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # Pub/Sub
-        self.pub = self.create_publisher(PoseStamped, self.output_topic, 10)
+        self.pub = self.create_publisher(ArucoDetection, self.output_topic, 10)
         self.sub = self.create_subscription(ArucoDetection, self.detections_topic, self.on_detections, 10)
 
         self.get_logger().info(
@@ -75,12 +76,18 @@ class HumanPoseFromAruco(Node):
                 in_pose.header.frame_id,
                 rclpy.time.Time()  # latest available
             )
-            out_pose = PoseStamped()
-            out_pose.header.stamp = in_pose.header.stamp
-            out_pose.header.frame_id = self.target_frame
-            out_pose.pose = do_transform_pose(in_pose.pose, tf).pose
+            transformed_pose = do_transform_pose(in_pose.pose, tf).pose
 
-            self.pub.publish(out_pose)
+            marker = MarkerPose()
+            marker.id = self.marker_id
+            marker.pose = transformed_pose
+
+            out_detection = ArucoDetection()
+            out_detection.header.stamp = in_pose.header.stamp
+            out_detection.header.frame_id = self.target_frame
+            out_detection.markers = [marker]
+
+            self.pub.publish(out_detection)
 
         except TransformException as ex:
             self.get_logger().warn(f"TF transform failed ({in_pose.header.frame_id} -> {self.target_frame}): {ex}")

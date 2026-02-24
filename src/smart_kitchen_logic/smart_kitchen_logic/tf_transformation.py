@@ -59,11 +59,11 @@ def lookup_base_link_tf(
 
 def compute_full_position(
     gripper_xyz: Tuple[float, float, float],
-    carriage_x: float,
+    carriage_y: float,
     lift_z: float,
 ) -> Tuple[float, float, float]:
     """Add carriage X offset and lift Z offset to a gripper position."""
-    return (gripper_xyz[0] + carriage_x, gripper_xyz[1], gripper_xyz[2] + lift_z)
+    return (gripper_xyz[0], gripper_xyz[1] + carriage_y, gripper_xyz[2] + lift_z)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ class PositionTracker:
     """Tracks gripper world position including carriage / lift offsets.
 
     Subscribes to:
-      /elmo/id1/carriage/position/get  (std_msgs/Float32) – carriage X
+      /elmo/id1/carriage/position/get  (std_msgs/Float32) – carriage Y
       /elmo/id1/lift/position/get      (std_msgs/Float32) – lift Z
     """
 
@@ -83,7 +83,7 @@ class PositionTracker:
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, node)
 
-        self._carriage_x: float = 0.0
+        self._carriage_y: float = 0.0
         self._lift_z: float = 0.0
 
         node.create_subscription(
@@ -95,7 +95,7 @@ class PositionTracker:
     # -- callbacks ----------------------------------------------------------
 
     def _on_carriage(self, msg: Float32) -> None:
-        self._carriage_x = msg.data
+        self._carriage_y = msg.data
 
     def _on_lift(self, msg: Float32) -> None:
         self._lift_z = msg.data

@@ -1,36 +1,41 @@
 #!/usr/bin/env python3
-"""Main planning node: orchestrates the cup pickup sequence.
+"""Planning node: aruco tracking, IK computation, and motion orchestration.
 
-Subscribes to /cup_positions (PoseArray) and for each cup:
-  1. Calls safety check  – is the position safely reachable?
-  2. Moves the robot      – go to the cup position
-  3. Grips                – close the gripper
-  4. Moves back           – return to the home position
+Subscribes:
+  /aruco_detections     (aruco_opencv_msgs/ArucoDetection) – camera-frame detections
+  /aruco_pose           (aruco_opencv_msgs/ArucoDetection) – base_link-frame poses
+  /robot_description    (std_msgs/String)                  – URDF for IK chain
+  /joint_states         (sensor_msgs/JointState)           – current joint positions
+  /move_robot_result    (std_msgs/Bool)
+  /move_carriage_result (std_msgs/Bool)
+  /move_lift_result     (std_msgs/Bool)
 
-Topics published:
-  /move_robot_goal                   (geometry_msgs/Pose)    – arm IK goal
-  /move_carriage_goal                (std_msgs/Float32)      – carriage position goal (consumed by moving_node)
-  /move_lift_goal                    (std_msgs/Float32)      – lift position goal (consumed by moving_node)
+Publishes:
+  /move_robot_goal      (std_msgs/Float64MultiArray)       – joint angle goals
+  /move_carriage_goal   (std_msgs/Float32)
+  /move_lift_goal       (std_msgs/Float32)
 """
 
-
-
-# ALEX NODES
-# Carriage is spawned initially at 0.0
-
-import time
+import math
+import tempfile
 import threading
+import xml.etree.ElementTree as ET
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseArray, Pose
-from std_msgs.msg import Bool, Float32
+from geometry_msgs.msg import Pose
+from std_msgs.msg import Bool, Float32, Float64MultiArray, String
+from sensor_msgs.msg import JointState
 from control_msgs.action import GripperCommand as GripperCommandAction
-from smart_kitchen_logic.tf_transformation import PositionTracker
+from aruco_opencv_msgs.msg import ArucoDetection
+from tf2_ros import Buffer, TransformListener, TransformException
+from tf2_geometry_msgs import do_transform_pose
+from ikpy.chain import Chain
 
-HOME_POSITION = (0.0, 0.0, 1.18)
 
 MOVE_TIMEOUT_SEC = 30.0
 GRIP_TIMEOUT_SEC = 15.0
@@ -39,27 +44,60 @@ GRIPPER_CLOSED = 0.7
 GRIPPER_OPEN = 0.0
 GRIPPER_MAX_EFFORT = 50.0
 
+ARM_JOINT_NAMES = [
+    'joint_1', 'joint_2', 'joint_3',
+    'joint_4', 'joint_5', 'joint_6',
+]
+
+# We have 6 joints, but the IK chain needs 8 links to work.
+# The first link is the base_link, which is fixed.
+# The last link is the end_effector_link, which is fixed.
+ARM_CHAIN_LEN = 8
+ACTIVE_MASK = [False, True, True, True, True, True, True, False]
+
 
 class PlanningNode(Node):
     def __init__(self):
         super().__init__('planning_node')
 
         self._lock = threading.Lock()
-        self._processing = False
-        self._done = False
+
+        # ── TF2 for pose transformations ──────────────────────────────────
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+
+        # ── IK chain from URDF ────────────────────────────────────────────
+        self._chain: Chain | None = None
+        self._current_joints: dict[str, float] = {n: 0.0 for n in ARM_JOINT_NAMES}
+
+        desc_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
+        self.create_subscription(
+            String, '/robot_description', self._on_robot_description, desc_qos)
+        self.create_subscription(
+            JointState, '/joint_states', self._on_joint_states, 10)
+
+        # ── Aruco tag tracking ────────────────────────────────────────────
+        # {marker_id: {'pose': Pose (base_link), 'distance': float (camera → aruco_tag)}}
+        self._aruco_tags: dict[int, dict] = {}
 
         self.create_subscription(
-            PoseArray, '/cup_positions', self._on_cup_positions, 10)
+            ArucoDetection, '/aruco_detections', self._on_aruco_detections, 10)
+        self.create_subscription(
+            ArucoDetection, '/aruco_pose', self._on_aruco_pose, 10)
 
-        # /move_robot communication
+        # ── Robot movement (joint goals → moving_node) ────────────────────
         self._move_goal_pub = self.create_publisher(
-            Pose, '/move_robot_goal', 10)
+            Float64MultiArray, '/move_robot_goal', 10)
         self._move_done = threading.Event()
         self._move_success = False
         self.create_subscription(
             Bool, '/move_robot_result', self._on_move_result, 10)
 
-        # carriage goal / result (forwarded to ELMO by moving_node)
+        # ── Carriage (Y-axis) ─────────────────────────────────────────────
         self._move_carriage_pub = self.create_publisher(
             Float32, '/move_carriage_goal', 10)
         self._carriage_done = threading.Event()
@@ -67,7 +105,7 @@ class PlanningNode(Node):
         self.create_subscription(
             Bool, '/move_carriage_result', self._on_carriage_result, 10)
 
-        # lift goal / result (forwarded to ELMO by moving_node)
+        # ── Lift (Z-axis) ─────────────────────────────────────────────────
         self._move_lift_pub = self.create_publisher(
             Float32, '/move_lift_goal', 10)
         self._lift_done = threading.Event()
@@ -75,207 +113,261 @@ class PlanningNode(Node):
         self.create_subscription(
             Bool, '/move_lift_result', self._on_lift_result, 10)
 
-        # gripper action client
+        # ── Gripper action client ─────────────────────────────────────────
         self._gripper_client = ActionClient(
             self, GripperCommandAction,
             '/robotiq_gripper_controller/gripper_cmd')
         self._grip_done = threading.Event()
         self._grip_success = False
 
-        self._tf_tracker = PositionTracker(self)
-        self.get_logger().info('Planning node started. Waiting for cup positions...')
+        # ── Main loop ─────────────────────────────────────────────────────
+        self._processed_tags: set[int] = set()
+        self._main_timer = self.create_timer(2.0, self._main_loop)
 
-    # ── subscriber callback ──────────────────────────────────────────────
-    
-    def _on_cup_positions(self, msg: PoseArray) -> None:
+        self.get_logger().info('Planning node started.')
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # URDF / IK chain
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _on_robot_description(self, msg: String) -> None:
+        if self._chain is not None:
+            return
+        try:
+            self._chain = self._build_chain(msg.data)
+            active = [l.name for l, a in zip(self._chain.links, ACTIVE_MASK) if a]
+            self.get_logger().info(
+                f'IK chain ready ({len(self._chain.links)} links, '
+                f'active: {active})')
+        except Exception as e:
+            self.get_logger().error(f'Failed to build IK chain: {e}')
+
+    @staticmethod
+    def _build_chain(urdf_string: str) -> Chain:
+        tree = ET.ElementTree(ET.fromstring(urdf_string))
+        for joint in tree.iter('joint'):
+            if joint.get('type') == 'continuous':
+                joint.set('type', 'revolute')
+                if joint.find('limit') is None:
+                    ET.SubElement(joint, 'limit', {
+                        'lower': str(-2 * math.pi),
+                        'upper': str(2 * math.pi),
+                        'effort': '100',
+                        'velocity': '1.0',
+                    })
+        with tempfile.NamedTemporaryFile(
+                suffix='.urdf', mode='wb', delete=False) as f:
+            tree.write(f)
+            urdf_path = f.name
+        full_chain = Chain.from_urdf_file(
+            urdf_path, base_elements=['base_link'], name='kinova_arm')
+        return Chain(
+            name='kinova_arm',
+            links=full_chain.links[:ARM_CHAIN_LEN],
+            active_links_mask=ACTIVE_MASK,
+        )
+
+    def _on_joint_states(self, msg: JointState) -> None:
+        for name, pos in zip(msg.name, msg.position):
+            if name in self._current_joints:
+                self._current_joints[name] = pos
+
+    def _build_ik_seed(self) -> list[float]:
+        seed = [0.0] * ARM_CHAIN_LEN
+        for i, link in enumerate(self._chain.links):
+            if link.name in self._current_joints:
+                seed[i] = self._current_joints[link.name]
+        return seed
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Aruco tag tracking
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _on_aruco_detections(self, msg: ArucoDetection):
+        """Camera-frame detections: update pose only when marker is closer to camera."""
+        source_frame = msg.header.frame_id  # camera frame (on end-effector)
         with self._lock:
-            if self._processing:
-                self.get_logger().debug('Cup positions received but already processing. Ignoring.')
-                return
-            if self._done:
-                self.get_logger().debug('Cup positions received but already done. Ignoring.')
-                return
-            if not msg.poses:
-                self.get_logger().debug('Received empty PoseArray. Waiting for cups ...')
-                return
-            self._processing = True
+            for marker in msg.markers:
+                p = marker.pose.position  # in camera frame
+                dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)  # camera → aruco_tag
 
-        positions = list(msg.poses)
-        self.get_logger().debug(
-            f'Received {len(positions)} cup pose(s). Spawning processing thread.')
-        thread = threading.Thread(
-            target=self._process_cups, args=(positions,), daemon=True)
-        thread.start()
+                mid = marker.marker_id
+                existing = self._aruco_tags.get(mid)
+                if existing is not None and dist >= existing['distance']:
+                    continue
 
-    # ── main processing loop ─────────────────────────────────────────────
+                try:
+                    tf = self._tf_buffer.lookup_transform(
+                        'base_link', source_frame, rclpy.time.Time())
+                    pose_base = do_transform_pose(marker.pose, tf).pose
+                    self._aruco_tags[mid] = {
+                        'pose': pose_base,
+                        'distance': dist,
+                    }
+                    self.get_logger().info(
+                        f'Aruco {mid}: updated (dist={dist:.3f}m)')
+                except TransformException as e:
+                    self.get_logger().warn(
+                        f'TF failed for marker {mid}: {e}')
 
-    def _process_cups(self, poses: list[Pose]) -> None:
-        total = len(poses)
-        self.get_logger().info(
-            f'Starting pickup sequence for {total} cup(s).')
+    def _on_aruco_pose(self, msg: ArucoDetection):
+        """Base-link poses from external nodes: add only if not yet tracked."""
+        with self._lock:
+            for marker in msg.markers:
+                mid = marker.marker_id
+                if mid not in self._aruco_tags:
+                    self._aruco_tags[mid] = {
+                        'pose': marker.pose,
+                        'distance': float('inf'),
+                    }
+                    self.get_logger().info(
+                        f'Aruco {mid}: added from /aruco_pose')
+
+    def get_aruco_tags(self) -> dict[int, dict]:
+        """Thread-safe snapshot of all tracked aruco tags."""
+        with self._lock:
+            return {k: dict(v) for k, v in self._aruco_tags.items()}
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Inverse kinematics
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def compute_ik(self, pose: Pose) -> list[float] | None:
+        """Compute joint angles for a base_link-frame pose. Returns None on failure."""
+        if self._chain is None:
+            self.get_logger().error('IK chain not ready')
+            return None
+
+        target = np.array([pose.position.x, pose.position.y, pose.position.z])
+        # Using the current pose as the seed makes IK converge to a solution near the current configuration and avoids jumps to other joint-space solutions.
+        seed = self._build_ik_seed()
 
         try:
-            bx, by, bz = self._tf_tracker.get_base_link_position()
-            self.get_logger().info(
-                f'Robot base_link in world: ({bx:.4f}, {by:.4f}, {bz:.4f})')
-            gx, gy, gz = self._tf_tracker.get_full_position()
-            self.get_logger().info(
-                f'Gripper world position (incl. carriage/lift): ({gx:.4f}, {gy:.4f}, {gz:.4f})')
+            ik = self._chain.inverse_kinematics(
+                target_position=target, initial_position=seed)
         except Exception as e:
-            self.get_logger().warn(f'Could not read initial positions: {e}')
+            self.get_logger().error(f'IK failed: {e}')
+            return None
 
-        for i, pose in enumerate(poses, start=1):
-            # x = pose.position.x
-            # y = pose.position.y
-            # z = pose.position.z
-            # Mocking
-            x = 0.4
-            y = 1.0
-            z = 1.60
-            self.get_logger().info(
-                f'--- Cup {i}/{total} at ({x:.3f}, {y:.3f}, {z:.3f}) ---')
+        fk = self._chain.forward_kinematics(ik)[:3, 3]
+        err = np.linalg.norm(fk - target)
+        if err > 0.05:
+            self.get_logger().error(f'IK error too large ({err:.3f}m)')
+            return None
 
-            # Step 1: safety check
-            safe = self._check_safety(x, y, z)
-            if not safe:
-                self.get_logger().warn(
-                    f'Cup {i} is NOT safe to reach. Skipping.')
-                continue
+        joints = [ik[i] for i in range(ARM_CHAIN_LEN) if ACTIVE_MASK[i]]
+        self.get_logger().info(
+            f'IK solution (err={err:.4f}m): {[f"{j:.3f}" for j in joints]}')
+        return joints
 
-            # Step 2.1: Move carriage to the cup x position
-            self._move_carriage(x)
+    def move_to_pose(self, pose: Pose) -> bool:
+        """Compute IK for a base_link pose and send joint goals to moving_node."""
+        joints = self.compute_ik(pose)
+        if joints is None:
+            return False
+        return self._send_joint_goal(joints)
 
-            # Step 2.2: Move lift to the cup z position
-            self._move_lift(0.3)
-            
-            # Step 2.3 Get current carriage and lift positions
-            carriage_pos = self._tf_tracker.carriage_x
-            lift_pos = self._tf_tracker.lift_z
-
-            # Step 2.4 Remove the carriage and lift offsets from the cup position
-            x_robot_move = x - carriage_pos
-            z_robot_move = z - lift_pos
-            
-            # Step 2.5: move robot to cup position
-            if not self._move_robot(x_robot_move, y, z_robot_move):
-                self.get_logger().error(f'Cup {i}: move to cup failed. Skipping.')
-                continue
-
-            # Step 3: grip the cup
-            if not self._grip():
-                self.get_logger().error(f'Cup {i}: grip failed. Skipping.')
-                continue
-
-            # Step 5: release the cup
-            # self._release()
-
-            self.get_logger().info(f'Cup {i} pickup complete.')
-
-        self.get_logger().info('All cups processed.')
+    def move_to_aruco(self, marker_id: int) -> bool:
+        """Move the robot end-effector to a tracked aruco tag's pose."""
         with self._lock:
-            self._processing = False
-            self._done = True
+            entry = self._aruco_tags.get(marker_id)
 
-    # ── /move_robot_result callback ─────────────────────────────────────
-
-    def _on_move_result(self, msg: Bool) -> None:
-        self.get_logger().debug(f'Received /move_robot_result: {msg.data}')
-        self._move_success = msg.data
-        self._move_done.set()
-
-    def _on_carriage_result(self, msg: Bool) -> None:
-        self.get_logger().debug(f'Received /move_carriage_result: {msg.data}')
-        self._carriage_success = msg.data
-        self._carriage_done.set()
-
-    def _on_lift_result(self, msg: Bool) -> None:
-        self.get_logger().debug(f'Received /move_lift_result: {msg.data}')
-        self._lift_success = msg.data
-        self._lift_done.set()
-
-    # ── movement (talks to moving_node via topics) ───────────────────────
-
-    def _move_carriage(self, x: float) -> bool:
-        """Send a carriage position goal to moving_node and wait for confirmation."""
-        self._carriage_done.clear()
-        self._carriage_success = False
-        self.get_logger().info(f'Carriage goal → {x}')
-        self._move_carriage_pub.publish(Float32(data=float(x)))
-
-        self.get_logger().debug(
-            f'Waiting for /move_carriage_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
-        if not self._carriage_done.wait(timeout=MOVE_TIMEOUT_SEC):
-            self.get_logger().error(
-                f'Carriage move timed out after {MOVE_TIMEOUT_SEC}s!')
+        if entry is None or entry['pose'] is None:
+            self.get_logger().error(f'No valid pose for aruco {marker_id}')
             return False
 
-        if not self._carriage_success:
-            self.get_logger().error(f'Carriage move to {x:.3f} failed!')
-            return False
+        self.get_logger().info(
+            f'Moving to aruco {marker_id} (dist={entry["distance"]:.3f}m)')
+        return self.move_to_pose(entry['pose'])
 
-        self.get_logger().info(f'Carriage move to {x:.3f} complete.')
-        return True
+    # ═══════════════════════════════════════════════════════════════════════
+    # Robot movement (joint goals → moving_node)
+    # ═══════════════════════════════════════════════════════════════════════
 
-    def _move_lift(self, z: float) -> bool:
-        """Send a lift position goal to moving_node and wait for confirmation."""
-        self._lift_done.clear()
-        self._lift_success = False
-        self.get_logger().info(f'Lift goal → {z}')
-        self._move_lift_pub.publish(Float32(data=float(z)))
-
-        self.get_logger().debug(
-            f'Waiting for /move_lift_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
-        if not self._lift_done.wait(timeout=MOVE_TIMEOUT_SEC):
-            self.get_logger().error(
-                f'Lift move timed out after {MOVE_TIMEOUT_SEC}s!')
-            return False
-
-        if not self._lift_success:
-            self.get_logger().error(f'Lift move to {z:.3f} failed!')
-            return False
-
-        self.get_logger().info(f'Lift move to {z:.3f} complete.')
-        return True
-
-    def _move_robot(self, x: float, y: float, z: float) -> bool:
-        """Publish goal to /move_robot_goal and block until /move_robot_result."""
-        goal = Pose()
-        goal.position.x = x
-        goal.position.y = y
-        goal.position.z = z
-
+    def _send_joint_goal(self, joints: list[float]) -> bool:
+        """Publish joint-angle goal and block until moving_node confirms."""
+        msg = Float64MultiArray(data=joints)
         self._move_done.clear()
         self._move_success = False
-        self.get_logger().info(
-            f'Sending move goal ({x:.3f}, {y:.3f}, {z:.3f}) ...')
-        self._move_goal_pub.publish(goal)
 
-        self.get_logger().debug(
-            f'Waiting for /move_robot_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
+        self.get_logger().info(
+            f'Sending joint goal: {[f"{j:.3f}" for j in joints]}')
+        self._move_goal_pub.publish(msg)
+
         if not self._move_done.wait(timeout=MOVE_TIMEOUT_SEC):
             self.get_logger().error(
                 f'Move timed out after {MOVE_TIMEOUT_SEC}s!')
             return False
 
         if not self._move_success:
-            self.get_logger().error(
-                f'Move to ({x:.3f}, {y:.3f}, {z:.3f}) failed!')
+            self.get_logger().error('Move failed!')
             return False
 
-        self.get_logger().info(
-            f'Move to ({x:.3f}, {y:.3f}, {z:.3f}) complete.')
+        self.get_logger().info('Move complete.')
         return True
 
-    # ── gripper (via robotiq_gripper_controller action) ─────────────────
+    def _on_move_result(self, msg: Bool) -> None:
+        self._move_success = msg.data
+        self._move_done.set()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Carriage control (Y-direction)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _move_carriage(self, y: float) -> bool:
+        """Send carriage goal to moving_node and block until done."""
+        self._carriage_done.clear()
+        self._carriage_success = False
+        self.get_logger().info(f'Carriage goal → {y:.3f}')
+        self._move_carriage_pub.publish(Float32(data=float(y)))
+
+        if not self._carriage_done.wait(timeout=MOVE_TIMEOUT_SEC):
+            self.get_logger().error('Carriage move timed out!')
+            return False
+        if not self._carriage_success:
+            self.get_logger().error(f'Carriage move to {y:.3f} failed!')
+            return False
+
+        self.get_logger().info(f'Carriage at {y:.3f}.')
+        return True
+
+    def _on_carriage_result(self, msg: Bool) -> None:
+        self._carriage_success = msg.data
+        self._carriage_done.set()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Lift control (Z-direction)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _move_lift(self, z: float) -> bool:
+        """Send lift goal to moving_node and block until done."""
+        self._lift_done.clear()
+        self._lift_success = False
+        self.get_logger().info(f'Lift goal → {z:.3f}')
+        self._move_lift_pub.publish(Float32(data=float(z)))
+
+        if not self._lift_done.wait(timeout=MOVE_TIMEOUT_SEC):
+            self.get_logger().error('Lift move timed out!')
+            return False
+        if not self._lift_success:
+            self.get_logger().error(f'Lift move to {z:.3f} failed!')
+            return False
+
+        self.get_logger().info(f'Lift at {z:.3f}.')
+        return True
+
+    def _on_lift_result(self, msg: Bool) -> None:
+        self._lift_success = msg.data
+        self._lift_done.set()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Gripper control
+    # ═══════════════════════════════════════════════════════════════════════
 
     def _send_gripper_goal(self, position: float, label: str) -> bool:
-        """Send a GripperCommand goal and block until it finishes."""
-        self.get_logger().debug(
-            f'{label}: waiting for gripper action server ...')
         if not self._gripper_client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error('Gripper action server not available!')
             return False
-        self.get_logger().debug(f'{label}: gripper action server is ready.')
 
         goal = GripperCommandAction.Goal()
         goal.command.position = position
@@ -284,17 +376,14 @@ class PlanningNode(Node):
         self._grip_done.clear()
         self._grip_success = False
 
-        self.get_logger().info(f'{label} (position={position:.2f}) ...')
+        self.get_logger().info(f'{label} (position={position:.2f})')
         future = self._gripper_client.send_goal_async(goal)
         future.add_done_callback(self._gripper_goal_response)
 
-        self.get_logger().debug(
-            f'{label}: waiting for result (timeout={GRIP_TIMEOUT_SEC}s) ...')
         if not self._grip_done.wait(timeout=GRIP_TIMEOUT_SEC):
-            self.get_logger().error(f'{label} timed out after {GRIP_TIMEOUT_SEC}s!')
+            self.get_logger().error(f'{label} timed out!')
             return False
 
-        self.get_logger().debug(f'{label}: result received, success={self._grip_success}')
         return self._grip_success
 
     def _gripper_goal_response(self, future) -> None:
@@ -303,35 +392,40 @@ class PlanningNode(Node):
             self.get_logger().error('Gripper goal rejected.')
             self._grip_done.set()
             return
-        self.get_logger().debug('Gripper goal accepted. Waiting for execution ...')
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._gripper_result)
+        goal_handle.get_result_async().add_done_callback(self._gripper_result)
 
     def _gripper_result(self, future) -> None:
         status = future.result().status
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self._grip_success = True
-            self.get_logger().debug('Gripper action succeeded.')
-        else:
-            self.get_logger().warn(f'Gripper finished with status {status}.')
+        self._grip_success = (status == GoalStatus.STATUS_SUCCEEDED)
         self._grip_done.set()
 
     def _grip(self) -> bool:
-        """Close the gripper to grasp a cup."""
         return self._send_gripper_goal(GRIPPER_CLOSED, 'Closing gripper')
 
     def _release(self) -> bool:
-        """Open the gripper to release a cup."""
         return self._send_gripper_goal(GRIPPER_OPEN, 'Opening gripper')
 
-    # ── mock helpers (replace with real service calls later) ──────────────
+    # ═══════════════════════════════════════════════════════════════════════
+    # Main loop
+    # ═══════════════════════════════════════════════════════════════════════
 
-    def _check_safety(self, x: float, y: float, z: float) -> bool:
-        """Mock /safety_estimation – always returns True."""
-        self.get_logger().info(
-            f'[MOCK safety] Checking ({x:.3f}, {y:.3f}, {z:.3f}) -> safe')
-        time.sleep(0.5)
-        return True
+    def _main_loop(self):
+        """Iterate over every detected unique aruco tag."""
+        tags = self.get_aruco_tags()
+        if not tags:
+            return
+
+        for mid, entry in tags.items():
+            if entry['pose'] is None:
+                continue
+
+            p = entry['pose'].position
+            self.get_logger().info(
+                f'[Main] Tag {mid}: '
+                f'({p.x:.3f}, {p.y:.3f}, {p.z:.3f}), '
+                f'dist={entry["distance"]:.3f}m')
+
+            # TODO: per-tag processing steps (to be implemented later)
 
 
 def main(args=None):
