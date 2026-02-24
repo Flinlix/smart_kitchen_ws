@@ -6,10 +6,14 @@ Subscribes to three Float32 topics (one per axis) and forwards the
 commanded positions to the rail_trajectory_controller.
 
 Topics (in):
-  /rail/x/position/set  (std_msgs/Float32)
+  /elmo/id1/carriage/position/set  (std_msgs/Float32)  [values are inverted: -1 → 1]
   /rail/y/position/set  (std_msgs/Float32)
-  /rail/z/position/set  (std_msgs/Float32)
+  /elmo/id1/lift/position/set  (std_msgs/Float32)
   /rail/yaw/position/set  (std_msgs/Float32)
+
+Topics (out):
+  /elmo/id1/carriage/position/get  (std_msgs/Float32)  [published at 10 Hz, reflects last commanded value]
+  /elmo/id1/lift/position/get      (std_msgs/Float32)  [published at 10 Hz, reflects last commanded value]
 
 The Float32 value is used directly as the joint position in metres.
 """
@@ -38,27 +42,34 @@ class FakeRailNode(Node):
         # Publisher: rail_trajectory_controller
         self._pub = self.create_publisher(JointTrajectory, CONTROLLER_TOPIC, 10)
 
+        # Publishers: current position feedback
+        self._pub_carriage_get = self.create_publisher(Float32, '/elmo/id1/carriage/position/get', 10)
+        self._pub_lift_get = self.create_publisher(Float32, '/elmo/id1/lift/position/get', 10)
+
         # One subscriber per axis
-        self.create_subscription(Float32, '/rail/x/position/set',
-                                 lambda msg: self._on_set(0, msg), 10)
+        self.create_subscription(Float32, '/elmo/id1/carriage/position/set',
+                                 lambda msg: self._on_set(0, msg, scale=-1.0), 10)
         self.create_subscription(Float32, '/rail/y/position/set',
                                  lambda msg: self._on_set(1, msg), 10)
-        self.create_subscription(Float32, '/rail/z/position/set',
+        self.create_subscription(Float32, '/elmo/id1/lift/position/set',
                                  lambda msg: self._on_set(2, msg), 10)
         self.create_subscription(Float32, '/rail/yaw/position/set',
                                  lambda msg: self._on_set(3, msg), 10)
 
+        # Timer: publish /get topics at 10 Hz
+        self.create_timer(0.1, self._publish_get_topics)
+
         self.get_logger().info(
             'Rail node ready.\n'
-            '  /rail/x/position/set    →  rail_x_joint\n'
+            '  /elmo/id1/carriage/position/set  →  rail_x_joint (inverted)\n'
             '  /rail/y/position/set    →  rail_y_joint\n'
-            '  /rail/z/position/set    →  rail_z_joint\n'
+            '  /elmo/id1/lift/position/set    →  rail_z_joint\n'
             '  /rail/yaw/position/set  →  rail_yaw_joint'
         )
 
-    def _on_set(self, axis: int, msg: Float32):
+    def _on_set(self, axis: int, msg: Float32, scale: float = 1.0):
         """Receive a position command for one axis and publish a trajectory."""
-        self._positions[axis] = msg.data
+        self._positions[axis] = msg.data * scale
 
         traj = JointTrajectory()
         traj.joint_names = JOINT_NAMES
@@ -80,6 +91,16 @@ class FakeRailNode(Node):
             f'z={self._positions[2]:.4f}m, '
             f'yaw={self._positions[3]:.4f}rad)'
         )
+
+    def _publish_get_topics(self):
+        """Publish current carriage and lift positions at a fixed rate."""
+        carriage_msg = Float32()
+        carriage_msg.data = -self._positions[0]  # invert back to /set frame
+        self._pub_carriage_get.publish(carriage_msg)
+
+        lift_msg = Float32()
+        lift_msg.data = self._positions[2]
+        self._pub_lift_get.publish(lift_msg)
 
 
 def main(args=None):
