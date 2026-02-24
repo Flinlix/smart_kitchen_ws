@@ -4,14 +4,13 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, PoseArray
-from std_msgs.msg import Header
 
 CUP_NAMES = ['cup_blue', 'cup_red', 'cup_blue_filled', 'cup_red_filled']
 
 
 class CupNode(Node):
     """Subscribes to Gazebo pose topics for each cup and publishes positions as PoseArray."""
-
+    
     def __init__(self):
         super().__init__('cup_node')
 

@@ -31,6 +31,8 @@ setup(
             'cup_node = smart_kitchen_logic.cup_node:main',
             'planning_node = smart_kitchen_logic.planning_node:main',
             'moving_node = smart_kitchen_logic.moving_node:main',
+            'init_node = smart_kitchen_logic.init_node:main',
+            'tf_transformation = smart_kitchen_logic.tf_transformation:main',
         ],
     },
 )

@@ -1,0 +1,10 @@
+# Goal
+float64[] joint_angles      # Target joint positions [j1..j6] in radians
+float64 duration_sec        # Time allowed to reach the position (seconds)
+---
+# Result
+bool success
+string message
+---
+# Feedback
+float64 elapsed_sec         # How many seconds have passed since goal was accepted

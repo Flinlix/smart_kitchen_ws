@@ -19,7 +19,7 @@ from geometry_msgs.msg import PoseArray, Pose
 from std_msgs.msg import Bool
 from control_msgs.action import GripperCommand as GripperCommandAction
 
-HOME_POSITION = (0.0, 0.0, 0.0)
+HOME_POSITION = (0.0, 0.0, 1.18)
 
 MOVE_TIMEOUT_SEC = 30.0
 GRIP_TIMEOUT_SEC = 15.0
@@ -44,6 +44,7 @@ class PlanningNode(Node):
         self._move_goal_pub = self.create_publisher(
             Pose, '/move_robot_goal', 10)
         self._move_done = threading.Event()
+        self._move_success = False
         self.create_subscription(
             Bool, '/move_robot_result', self._on_move_result, 10)
 
@@ -54,19 +55,27 @@ class PlanningNode(Node):
         self._grip_done = threading.Event()
         self._grip_success = False
 
+        self._tf_tracker = PositionTracker(self)
         self.get_logger().info('Planning node started. Waiting for cup positions...')
 
     # ── subscriber callback ──────────────────────────────────────────────
-
+    
     def _on_cup_positions(self, msg: PoseArray) -> None:
         with self._lock:
-            if self._processing or self._done:
+            if self._processing:
+                self.get_logger().debug('Cup positions received but already processing. Ignoring.')
+                return
+            if self._done:
+                self.get_logger().debug('Cup positions received but already done. Ignoring.')
                 return
             if not msg.poses:
+                self.get_logger().debug('Received empty PoseArray. Waiting for cups ...')
                 return
             self._processing = True
 
         positions = list(msg.poses)
+        self.get_logger().debug(
+            f'Received {len(positions)} cup pose(s). Spawning processing thread.')
         thread = threading.Thread(
             target=self._process_cups, args=(positions,), daemon=True)
         thread.start()
@@ -92,14 +101,23 @@ class PlanningNode(Node):
                     f'Cup {i} is NOT safe to reach. Skipping.')
                 continue
 
+            # Step 2.1: Move carriage to the cup x position
+            x, y, z = self._tf_tracker.get_full_position()
+            
             # Step 2: move robot to cup position
-            self._move_robot(x, y, z)
+            if not self._move_robot(x, y, z):
+                self.get_logger().error(f'Cup {i}: move to cup failed. Skipping.')
+                continue
 
             # Step 3: grip the cup
-            self._grip()
+            if not self._grip():
+                self.get_logger().error(f'Cup {i}: grip failed. Skipping.')
+                continue
 
             # Step 4: move robot back to home
-            self._move_robot(*HOME_POSITION)
+            if not self._move_robot(*HOME_POSITION):
+                self.get_logger().error(f'Cup {i}: move home failed. Stopping.')
+                break
 
             # Step 5: release the cup
             self._release()
@@ -114,10 +132,15 @@ class PlanningNode(Node):
     # ── /move_robot_result callback ─────────────────────────────────────
 
     def _on_move_result(self, msg: Bool) -> None:
-        if msg.data:
-            self._move_done.set()
+        self.get_logger().debug(f'Received /move_robot_result: {msg.data}')
+        self._move_success = msg.data
+        self._move_done.set()
 
     # ── movement (talks to moving_node via topics) ───────────────────────
+
+    def _move_carriage(self, x: float) -> bool:
+        """Move the carriage to the given x position."""
+        return self._move_robot(x, 0.0, 0.0)
 
     def _move_robot(self, x: float, y: float, z: float) -> bool:
         """Publish goal to /move_robot_goal and block until /move_robot_result."""
@@ -127,12 +150,21 @@ class PlanningNode(Node):
         goal.position.z = z
 
         self._move_done.clear()
+        self._move_success = False
         self.get_logger().info(
             f'Sending move goal ({x:.3f}, {y:.3f}, {z:.3f}) ...')
         self._move_goal_pub.publish(goal)
 
+        self.get_logger().debug(
+            f'Waiting for /move_robot_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
         if not self._move_done.wait(timeout=MOVE_TIMEOUT_SEC):
-            self.get_logger().error('Move timed out!')
+            self.get_logger().error(
+                f'Move timed out after {MOVE_TIMEOUT_SEC}s!')
+            return False
+
+        if not self._move_success:
+            self.get_logger().error(
+                f'Move to ({x:.3f}, {y:.3f}, {z:.3f}) failed!')
             return False
 
         self.get_logger().info(
@@ -143,9 +175,12 @@ class PlanningNode(Node):
 
     def _send_gripper_goal(self, position: float, label: str) -> bool:
         """Send a GripperCommand goal and block until it finishes."""
+        self.get_logger().debug(
+            f'{label}: waiting for gripper action server ...')
         if not self._gripper_client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error('Gripper action server not available!')
             return False
+        self.get_logger().debug(f'{label}: gripper action server is ready.')
 
         goal = GripperCommandAction.Goal()
         goal.command.position = position
@@ -158,10 +193,13 @@ class PlanningNode(Node):
         future = self._gripper_client.send_goal_async(goal)
         future.add_done_callback(self._gripper_goal_response)
 
+        self.get_logger().debug(
+            f'{label}: waiting for result (timeout={GRIP_TIMEOUT_SEC}s) ...')
         if not self._grip_done.wait(timeout=GRIP_TIMEOUT_SEC):
-            self.get_logger().error(f'{label} timed out!')
+            self.get_logger().error(f'{label} timed out after {GRIP_TIMEOUT_SEC}s!')
             return False
 
+        self.get_logger().debug(f'{label}: result received, success={self._grip_success}')
         return self._grip_success
 
     def _gripper_goal_response(self, future) -> None:
@@ -170,6 +208,7 @@ class PlanningNode(Node):
             self.get_logger().error('Gripper goal rejected.')
             self._grip_done.set()
             return
+        self.get_logger().debug('Gripper goal accepted. Waiting for execution ...')
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._gripper_result)
 
@@ -177,6 +216,7 @@ class PlanningNode(Node):
         status = future.result().status
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._grip_success = True
+            self.get_logger().debug('Gripper action succeeded.')
         else:
             self.get_logger().warn(f'Gripper finished with status {status}.')
         self._grip_done.set()

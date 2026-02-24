@@ -3,11 +3,19 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64MultiArray
+
+# Latched QoS — late subscribers still receive the last message
+_LATCHED_QOS = QoSProfile(
+    depth=1,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+    reliability=ReliabilityPolicy.RELIABLE,
+)
 
 
 class RobotMoverNode(Node):
@@ -23,6 +31,19 @@ class RobotMoverNode(Node):
 
         self.stop_sub = self.create_subscription(
             Bool, '/emergency_stop', self.emergency_stop_callback, 10)
+
+        # Accept joint goals from other nodes (e.g. init_node)
+        self.create_subscription(
+            Float64MultiArray, '/move_joints_goal',
+            self._on_joints_goal, 10)
+
+        # Publish movement result so other nodes can react
+        self._result_pub = self.create_publisher(
+            Bool, '/move_joints_result', 10)
+
+        # Latched: late subscribers (e.g. init_node) still get the ready signal
+        self._ready_pub = self.create_publisher(
+            Bool, '/move_joints_ready', _LATCHED_QOS)
 
         self.current_target = None
         self.is_moving = False
@@ -53,6 +74,12 @@ class RobotMoverNode(Node):
             self.get_logger().info('Clearance received — resuming movement.')
             if self.current_target:
                 self.send_goal(self.current_target, duration_sec=4.0)
+
+    # ── joints-goal topic ────────────────────────────────────────────────
+    def _on_joints_goal(self, msg: Float64MultiArray) -> None:
+        """Receive a joint goal from another node and execute it."""
+        self.get_logger().info(f'Received /move_joints_goal: {list(msg.data)}')
+        self.send_goal(list(msg.data))
 
     # ── movement ────────────────────────────────────────────────────────
     def send_goal(self, target_positions, duration_sec=5.0):
@@ -94,12 +121,17 @@ class RobotMoverNode(Node):
         result = future.result()
         status = result.status
         self.is_moving = False
-        if status == GoalStatus.STATUS_SUCCEEDED:
+        success = status == GoalStatus.STATUS_SUCCEEDED
+        if success:
             self.get_logger().info('Trajectory completed successfully.')
         elif status == GoalStatus.STATUS_CANCELED:
             self.get_logger().info('Trajectory was cancelled.')
         else:
             self.get_logger().warn(f'Trajectory finished with status {status}.')
+        result_msg = Bool()
+        result_msg.data = success
+        self._result_pub.publish(result_msg)
+        self.get_logger().info(f'Published /move_joints_result = {success}')
 
     # ── cancel ──────────────────────────────────────────────────────────
     def cancel_movement(self):
@@ -120,6 +152,10 @@ def main(args=None):
         node._server_ready = True
         target = node.get_parameter('target_joints').value
         node.get_logger().info(f'Action server ready — sending initial goal: {target}')
+        # Announce readiness so other nodes can start sending goals
+        ready_msg = Bool()
+        ready_msg.data = True
+        node._ready_pub.publish(ready_msg)
         node.send_goal(target, duration_sec=8.0)
 
     def _check_server():
