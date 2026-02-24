@@ -1,5 +1,11 @@
 # Useful Commands
 
+# Move Carriage
+ros2 topic pub --once /elmo/id1/carriage/position/set std_msgs/msg/Float32 "{data: 1.0}"
+
+# Move Lift
+ros2 topic pub --once /elmo/id1/lift/position/set std_msgs/msg/Float32 "{data: 0.25}"
+
 # Open Gripper
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
 

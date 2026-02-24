@@ -175,7 +175,7 @@ class CommandExecutorNode(Node):
 
             # Handle gripper
             if waypoint_name in GRIPPER_WAYPOINTS:
-                success = self._execute_gripper(waypoint_name)
+                success = await self._execute_gripper(waypoint_name)
                 if not success:
                     result.success = False
                     result.message = f'Failed to execute gripper command: {waypoint_name}'
@@ -227,25 +227,15 @@ class CommandExecutorNode(Node):
         if not client.wait_for_server(timeout_sec=2.0):
             return False, 'Action server not available'
 
-        # Send goal
-        send_future = client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, send_future, timeout_sec=2.0)
+        # Send goal (non-blocking await)
+        goal_handle = await client.send_goal_async(goal)
         
-        if not send_future.done():
-            return False, 'Goal send timeout'
-
-        goal_handle = send_future.result()
         if not goal_handle.accepted:
             return False, 'Goal rejected by action server'
 
-        # Wait for result
-        result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future, timeout_sec=timeout_sec)
-
-        if not result_future.done():
-            return False, 'Action execution timeout'
-
-        result = result_future.result()
+        # Wait for result (non-blocking await)
+        result = await goal_handle.get_result_async()
+        
         success = (result.status == GoalStatus.STATUS_SUCCEEDED)
         
         if success:
@@ -289,12 +279,6 @@ class CommandExecutorNode(Node):
         lift = waypoint.get('lift', None)
         duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
 
-        # Set carriage/lift if specified - TODO: make this more secure & decide when to move them (before/after arm movement)
-        if carriage is not None:
-            self._carriage_pub.publish(Float32(data=float(carriage)))
-        if lift is not None:
-            self._lift_pub.publish(Float32(data=float(lift)))
-
         # Create and send goal - TODO: adjust angles here according to cup_id
         goal = MoveToJoints.Goal()
         goal.joint_angles = [float(j) for j in joints]
@@ -306,6 +290,13 @@ class CommandExecutorNode(Node):
         if not success:
             self.get_logger().error(f'Waypoint execution failed: {message}')
             return False
+        
+        # Set carriage/lift if specified - TODO: make this more secure & decide when to move them (before/after arm movement)
+        time.sleep(0.5)
+        if carriage is not None:
+            self._carriage_pub.publish(Float32(data=float(carriage)))
+        if lift is not None:
+            self._lift_pub.publish(Float32(data=float(lift)))
 
         # # Wait after movement (if specified)
         # if wait_after > 0.0:

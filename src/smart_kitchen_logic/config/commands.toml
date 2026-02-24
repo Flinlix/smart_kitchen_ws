@@ -1,6 +1,6 @@
 [pick_cup]
 description = "Pick up cup from counter"
-waypoints = ["pre_pick", "pick", "close_gripper"]
+waypoints = ["pick", "close_gripper"]
 
 [drop_cup]
 description = "Throw cup into sink"
@@ -8,7 +8,7 @@ waypoints = ["open_gripper"]
 
 [to_sink]
 description = "Move to sink position"
-waypoints = ["carry"]
+waypoints = ["carry", "sink"]
 
 [home]
 description = "Return to home position"
