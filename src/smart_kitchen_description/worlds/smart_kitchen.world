@@ -117,5 +117,38 @@
       <pose>0.2 -0.2 0.950 0 0 0</pose>
     </include> -->
 
+    <!-- Visual marker: no physics
+         Move it at runtime by publishing to /visual_marker/goal_pose
+         (geometry_msgs/Pose) -->
+    <model name="visual_marker">
+      <static>true</static>
+      <pose>0.0 0.0 1.5 0 0 0</pose>
+
+      <plugin filename="gz-sim-pose-publisher-system"
+              name="gz::sim::systems::PosePublisher">
+        <publish_link_pose>false</publish_link_pose>
+        <publish_model_pose>true</publish_model_pose>
+        <update_frequency>10.0</update_frequency>
+      </plugin>
+
+      <link name="link">
+        <visual name="sphere_visual">
+          <geometry>
+            <sphere>
+              <radius>0.05</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>1.0 0.9 0.0 1.0</ambient>
+            <diffuse>1.0 0.9 0.0 1.0</diffuse>
+            <specular>0.5 0.5 0.0 1.0</specular>
+            <emissive>0.4 0.35 0.0 1.0</emissive>
+          </material>
+          <transparency>0.0</transparency>
+          <cast_shadows>false</cast_shadows>
+        </visual>
+      </link>
+    </model>
+
   </world>
 </sdf>

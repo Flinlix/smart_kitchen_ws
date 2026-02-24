@@ -33,6 +33,7 @@ setup(
             'moving_node = smart_kitchen_logic.moving_node:main',
             'init_node = smart_kitchen_logic.init_node:main',
             'tf_transformation = smart_kitchen_logic.tf_transformation:main',
+            'visual_marker_node = smart_kitchen_logic.visual_marker_node:main',
         ],
     },
 )
