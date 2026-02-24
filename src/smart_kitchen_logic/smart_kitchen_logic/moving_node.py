@@ -12,7 +12,9 @@ Topics subscribed:
   /joint_states                      (sensor_msgs/JointState)
 
 Topics published:
-  /move_robot_result                 (std_msgs/Bool)         – True when move is done
+  /move_robot_result                 (std_msgs/Bool)         – True when arm move is done
+  /move_carriage_result              (std_msgs/Bool)         – True after carriage setpoint forwarded
+  /move_lift_result                  (std_msgs/Bool)         – True after lift setpoint forwarded
   /elmo/id1/carriage/position/set    (std_msgs/Float32)      – carriage position setpoint
   /elmo/id1/lift/position/set        (std_msgs/Float32)      – lift position setpoint
 
@@ -80,11 +82,15 @@ class MovingNode(Node):
         self.create_subscription(Pose, '/move_robot_goal', self._on_goal, 10)
         self._result_pub = self.create_publisher(Bool, '/move_robot_result', 10)
 
-        # Carriage and lift: receive goals, forward to ELMO drives
+        # Carriage and lift: receive goals, forward to ELMO drives, publish result
         self._carriage_pub = self.create_publisher(
             Float32, '/elmo/id1/carriage/position/set', 10)
         self._lift_pub = self.create_publisher(
             Float32, '/elmo/id1/lift/position/set', 10)
+        self._carriage_result_pub = self.create_publisher(
+            Bool, '/move_carriage_result', 10)
+        self._lift_result_pub = self.create_publisher(
+            Bool, '/move_lift_result', 10)
         self.create_subscription(
             Float32, '/move_carriage_goal', self._on_carriage_goal, 10)
         self.create_subscription(
@@ -282,14 +288,16 @@ class MovingNode(Node):
     # ── carriage / lift control ──────────────────────────────────────────
 
     def _on_carriage_goal(self, msg: Float32) -> None:
-        """Forward a carriage position goal to the ELMO drive."""
+        """Forward a carriage position goal to the ELMO drive and confirm."""
         self._carriage_pub.publish(Float32(data=msg.data))
         self.get_logger().info(f'Carriage setpoint → {msg.data}')
+        self._carriage_result_pub.publish(Bool(data=True))
 
     def _on_lift_goal(self, msg: Float32) -> None:
-        """Forward a lift position goal to the ELMO drive."""
+        """Forward a lift position goal to the ELMO drive and confirm."""
         self._lift_pub.publish(Float32(data=msg.data))
         self.get_logger().info(f'Lift setpoint → {msg.data}')
+        self._lift_result_pub.publish(Bool(data=True))
 
 
 def main(args=None):

@@ -44,6 +44,19 @@ def lookup_gripper_tf(
     return (t.x, t.y, t.z)
 
 
+def lookup_base_link_tf(
+    tf_buffer: tf2_ros.Buffer,
+    timeout_sec: float = 0.0,
+    world_frame: str = "world",
+    robot_frame: str = "base_link",
+) -> Tuple[float, float, float]:
+    """Return (x, y, z) of *robot_frame* expressed in *world_frame*."""
+    timeout = Duration(seconds=timeout_sec) if timeout_sec > 0 else Duration()
+    ts = tf_buffer.lookup_transform(world_frame, robot_frame, Time(), timeout=timeout)
+    t = ts.transform.translation
+    return (t.x, t.y, t.z)
+
+
 def compute_full_position(
     gripper_xyz: Tuple[float, float, float],
     carriage_x: float,
@@ -79,7 +92,6 @@ class PositionTracker:
         node.create_subscription(
             Float32, "/elmo/id1/lift/position/get", self._on_lift, 10,
         )
-
     # -- callbacks ----------------------------------------------------------
 
     def _on_carriage(self, msg: Float32) -> None:
@@ -105,6 +117,10 @@ class PositionTracker:
     def get_gripper_tf(self, timeout_sec: float = 0.0) -> Tuple[float, float, float]:
         """(x, y, z) of the gripper w.r.t. base_link from tf2 alone."""
         return lookup_gripper_tf(self._tf_buffer, timeout_sec)
+
+    def get_base_link_position(self, timeout_sec: float = 0.0) -> Tuple[float, float, float]:
+        """(x, y, z) of base_link expressed in the world frame."""
+        return lookup_base_link_tf(self._tf_buffer, timeout_sec)
 
     def get_full_position(self, timeout_sec: float = 0.0) -> Tuple[float, float, float]:
         """Gripper position with carriage (X) and lift (Z) offsets applied."""

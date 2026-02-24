@@ -183,8 +183,16 @@ class RobotMoverNode(Node):
         result_future.add_done_callback(self._on_traj_result)
 
     def _on_traj_result(self, future) -> None:
-        status = future.result().status
-        success = status == GoalStatus.STATUS_SUCCEEDED
+        traj_result = future.result()
+        status = traj_result.status
+        error_code = traj_result.result.error_code
+
+        # error_code == 0 means SUCCESSFUL in FollowJointTrajectory.
+        # The Kinova Kortex controller can return STATUS_ABORTED at the goal
+        # level even when the motion completed correctly, so we treat
+        # error_code == 0 as success regardless of the goal status.
+        success = (status == GoalStatus.STATUS_SUCCEEDED) or (error_code == 0)
+
         if success:
             msg = 'Arm reached the target position.'
             self.get_logger().info(msg)
@@ -192,7 +200,7 @@ class RobotMoverNode(Node):
             msg = 'Trajectory was cancelled.'
             self.get_logger().warn(msg)
         else:
-            msg = f'Trajectory ended with status {status}.'
+            msg = f'Trajectory ended with status={status}, error_code={error_code}.'
             self.get_logger().error(msg)
 
         self._traj_success = success

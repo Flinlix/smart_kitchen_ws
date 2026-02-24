@@ -13,6 +13,11 @@ Topics published:
   /move_lift_goal                    (std_msgs/Float32)      – lift position goal (consumed by moving_node)
 """
 
+
+
+# ALEX NODES
+# Carriage is spawned initially at 0.0
+
 import time
 import threading
 
@@ -23,6 +28,7 @@ from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseArray, Pose
 from std_msgs.msg import Bool, Float32
 from control_msgs.action import GripperCommand as GripperCommandAction
+from smart_kitchen_logic.tf_transformation import PositionTracker
 
 HOME_POSITION = (0.0, 0.0, 1.18)
 
@@ -53,11 +59,21 @@ class PlanningNode(Node):
         self.create_subscription(
             Bool, '/move_robot_result', self._on_move_result, 10)
 
-        # carriage and lift goal publishers (forwarded to ELMO by moving_node)
+        # carriage goal / result (forwarded to ELMO by moving_node)
         self._move_carriage_pub = self.create_publisher(
             Float32, '/move_carriage_goal', 10)
+        self._carriage_done = threading.Event()
+        self._carriage_success = False
+        self.create_subscription(
+            Bool, '/move_carriage_result', self._on_carriage_result, 10)
+
+        # lift goal / result (forwarded to ELMO by moving_node)
         self._move_lift_pub = self.create_publisher(
             Float32, '/move_lift_goal', 10)
+        self._lift_done = threading.Event()
+        self._lift_success = False
+        self.create_subscription(
+            Bool, '/move_lift_result', self._on_lift_result, 10)
 
         # gripper action client
         self._gripper_client = ActionClient(
@@ -98,10 +114,24 @@ class PlanningNode(Node):
         self.get_logger().info(
             f'Starting pickup sequence for {total} cup(s).')
 
+        try:
+            bx, by, bz = self._tf_tracker.get_base_link_position()
+            self.get_logger().info(
+                f'Robot base_link in world: ({bx:.4f}, {by:.4f}, {bz:.4f})')
+            gx, gy, gz = self._tf_tracker.get_full_position()
+            self.get_logger().info(
+                f'Gripper world position (incl. carriage/lift): ({gx:.4f}, {gy:.4f}, {gz:.4f})')
+        except Exception as e:
+            self.get_logger().warn(f'Could not read initial positions: {e}')
+
         for i, pose in enumerate(poses, start=1):
-            x = pose.position.x
-            y = pose.position.y
-            z = pose.position.z
+            # x = pose.position.x
+            # y = pose.position.y
+            # z = pose.position.z
+            # Mocking
+            x = 0.4
+            y = 1.0
+            z = 1.60
             self.get_logger().info(
                 f'--- Cup {i}/{total} at ({x:.3f}, {y:.3f}, {z:.3f}) ---')
 
@@ -113,10 +143,21 @@ class PlanningNode(Node):
                 continue
 
             # Step 2.1: Move carriage to the cup x position
-            x, y, z = self._tf_tracker.get_full_position()
+            self._move_carriage(x)
+
+            # Step 2.2: Move lift to the cup z position
+            self._move_lift(0.3)
             
-            # Step 2: move robot to cup position
-            if not self._move_robot(x, y, z):
+            # Step 2.3 Get current carriage and lift positions
+            carriage_pos = self._tf_tracker.carriage_x
+            lift_pos = self._tf_tracker.lift_z
+
+            # Step 2.4 Remove the carriage and lift offsets from the cup position
+            x_robot_move = x - carriage_pos
+            z_robot_move = z - lift_pos
+            
+            # Step 2.5: move robot to cup position
+            if not self._move_robot(x_robot_move, y, z_robot_move):
                 self.get_logger().error(f'Cup {i}: move to cup failed. Skipping.')
                 continue
 
@@ -125,13 +166,8 @@ class PlanningNode(Node):
                 self.get_logger().error(f'Cup {i}: grip failed. Skipping.')
                 continue
 
-            # Step 4: move robot back to home
-            if not self._move_robot(*HOME_POSITION):
-                self.get_logger().error(f'Cup {i}: move home failed. Stopping.')
-                break
-
             # Step 5: release the cup
-            self._release()
+            # self._release()
 
             self.get_logger().info(f'Cup {i} pickup complete.')
 
@@ -147,17 +183,59 @@ class PlanningNode(Node):
         self._move_success = msg.data
         self._move_done.set()
 
+    def _on_carriage_result(self, msg: Bool) -> None:
+        self.get_logger().debug(f'Received /move_carriage_result: {msg.data}')
+        self._carriage_success = msg.data
+        self._carriage_done.set()
+
+    def _on_lift_result(self, msg: Bool) -> None:
+        self.get_logger().debug(f'Received /move_lift_result: {msg.data}')
+        self._lift_success = msg.data
+        self._lift_done.set()
+
     # ── movement (talks to moving_node via topics) ───────────────────────
 
-    def _move_carriage(self, x: float) -> None:
-        """Send a carriage position goal to moving_node."""
-        self._move_carriage_pub.publish(Float32(data=float(x)))
+    def _move_carriage(self, x: float) -> bool:
+        """Send a carriage position goal to moving_node and wait for confirmation."""
+        self._carriage_done.clear()
+        self._carriage_success = False
         self.get_logger().info(f'Carriage goal → {x}')
+        self._move_carriage_pub.publish(Float32(data=float(x)))
 
-    def _move_lift(self, z: float) -> None:
-        """Send a lift position goal to moving_node."""
-        self._move_lift_pub.publish(Float32(data=float(z)))
+        self.get_logger().debug(
+            f'Waiting for /move_carriage_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
+        if not self._carriage_done.wait(timeout=MOVE_TIMEOUT_SEC):
+            self.get_logger().error(
+                f'Carriage move timed out after {MOVE_TIMEOUT_SEC}s!')
+            return False
+
+        if not self._carriage_success:
+            self.get_logger().error(f'Carriage move to {x:.3f} failed!')
+            return False
+
+        self.get_logger().info(f'Carriage move to {x:.3f} complete.')
+        return True
+
+    def _move_lift(self, z: float) -> bool:
+        """Send a lift position goal to moving_node and wait for confirmation."""
+        self._lift_done.clear()
+        self._lift_success = False
         self.get_logger().info(f'Lift goal → {z}')
+        self._move_lift_pub.publish(Float32(data=float(z)))
+
+        self.get_logger().debug(
+            f'Waiting for /move_lift_result (timeout={MOVE_TIMEOUT_SEC}s) ...')
+        if not self._lift_done.wait(timeout=MOVE_TIMEOUT_SEC):
+            self.get_logger().error(
+                f'Lift move timed out after {MOVE_TIMEOUT_SEC}s!')
+            return False
+
+        if not self._lift_success:
+            self.get_logger().error(f'Lift move to {z:.3f} failed!')
+            return False
+
+        self.get_logger().info(f'Lift move to {z:.3f} complete.')
+        return True
 
     def _move_robot(self, x: float, y: float, z: float) -> bool:
         """Publish goal to /move_robot_goal and block until /move_robot_result."""

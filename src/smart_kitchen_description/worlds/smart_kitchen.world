@@ -93,29 +93,29 @@
     <include>
       <uri>model://cup_blue</uri>
       <name>cup_blue</name>
-      <pose>0.1 0.2 0.950 0 0 0</pose>
+      <pose>0.5 1.7 0.950 0 0 0</pose>
     </include>
 
     <!-- Red cup on the counter -->
     <include>
       <uri>model://cup_red</uri>
       <name>cup_red</name>
-      <pose>0.1 -0.2 0.950 0 0 0</pose>
+      <pose>0.3 1.6 0.950 0 0 0</pose>
     </include>
 
     <!-- Blue cup filled with liquid -->
-    <include>
+    <!-- <include>
       <uri>model://cup_blue_filled</uri>
       <name>cup_blue_filled</name>
       <pose>0.2 0.2 0.950 0 0 0</pose>
-    </include>
+    </include> -->
 
     <!-- Red cup filled with liquid -->
-    <include>
+    <!-- <include>
       <uri>model://cup_red_filled</uri>
       <name>cup_red_filled</name>
       <pose>0.2 -0.2 0.950 0 0 0</pose>
-    </include>
+    </include> -->
 
   </world>
 </sdf>
