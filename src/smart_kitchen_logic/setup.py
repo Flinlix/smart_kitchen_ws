@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'command_executor = smart_kitchen_logic.command_executor:main',
             'controller = smart_kitchen_logic.robot_mover_node:main',
             'fake_human = smart_kitchen_logic.fake_human:main',
             'safety_monitor = smart_kitchen_logic.safety_monitor:main',

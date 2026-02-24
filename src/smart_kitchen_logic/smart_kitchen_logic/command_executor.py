@@ -41,11 +41,11 @@ import time
 from pathlib import Path
 
 WAYPOINT_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
+    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
 )
 
 COMMANDS_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'smart_kitchen_logic' / 'config' /'commands.toml'
+    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
 )
 
 DEFAULT_DURATION_SEC = 8.0
@@ -122,8 +122,12 @@ class CommandExecutorNode(Node):
                 f'Available: {list(self._commands.keys())}')
             return GoalResponse.REJECT
 
-        # Build parameter dict for logging
-        params = goal_request.cup_ids if goal_request.cup_ids else {}
+        params = goal_request.cup_id if goal_request.cup_id else None
+        
+        if command_name in CUP_COMMAND and not params:
+            self.get_logger().warn(
+                f'Rejecting command "{command_name}" due to missing cup_id parameter.')
+            return GoalResponse.REJECT
         
         self.get_logger().info(
             f'Accepting command: "{command_name}" with params: {params}')
@@ -148,15 +152,6 @@ class CommandExecutorNode(Node):
         
         feedback = ExecuteCommand.Feedback()
         result = ExecuteCommand.Result()
-        
-        if command_name in CUP_COMMAND and not cup_id:
-            self.get_logger().warn(
-                f'Command "{command_name}" requires a cup_id parameter. '
-                f'Available cup_ids: {goal_handle.request.cup_ids}')
-            result.success = False
-            result.message = 'Missing required parameter: cup_id'
-            goal_handle.reject()
-            return result
         
         self.get_logger().info(
             f'Executing command "{command_name}" with cup_id: {cup_id} '
@@ -300,7 +295,7 @@ class CommandExecutorNode(Node):
         if lift is not None:
             self._lift_pub.publish(Float32(data=float(lift)))
 
-        # Create and send goal - TODO adjust angles here according to cup_id
+        # Create and send goal - TODO: adjust angles here according to cup_id
         goal = MoveToJoints.Goal()
         goal.joint_angles = [float(j) for j in joints]
         goal.duration_sec = float(duration)
