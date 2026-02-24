@@ -6,6 +6,11 @@ Subscribes to /cup_positions (PoseArray) and for each cup:
   2. Moves the robot      – go to the cup position
   3. Grips                – close the gripper
   4. Moves back           – return to the home position
+
+Topics published:
+  /move_robot_goal                   (geometry_msgs/Pose)    – arm IK goal
+  /move_carriage_goal                (std_msgs/Float32)      – carriage position goal (consumed by moving_node)
+  /move_lift_goal                    (std_msgs/Float32)      – lift position goal (consumed by moving_node)
 """
 
 import time
@@ -16,7 +21,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseArray, Pose
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32
 from control_msgs.action import GripperCommand as GripperCommandAction
 
 HOME_POSITION = (0.0, 0.0, 1.18)
@@ -47,6 +52,12 @@ class PlanningNode(Node):
         self._move_success = False
         self.create_subscription(
             Bool, '/move_robot_result', self._on_move_result, 10)
+
+        # carriage and lift goal publishers (forwarded to ELMO by moving_node)
+        self._move_carriage_pub = self.create_publisher(
+            Float32, '/move_carriage_goal', 10)
+        self._move_lift_pub = self.create_publisher(
+            Float32, '/move_lift_goal', 10)
 
         # gripper action client
         self._gripper_client = ActionClient(
@@ -138,9 +149,15 @@ class PlanningNode(Node):
 
     # ── movement (talks to moving_node via topics) ───────────────────────
 
-    def _move_carriage(self, x: float) -> bool:
-        """Move the carriage to the given x position."""
-        return self._move_robot(x, 0.0, 0.0)
+    def _move_carriage(self, x: float) -> None:
+        """Send a carriage position goal to moving_node."""
+        self._move_carriage_pub.publish(Float32(data=float(x)))
+        self.get_logger().info(f'Carriage goal → {x}')
+
+    def _move_lift(self, z: float) -> None:
+        """Send a lift position goal to moving_node."""
+        self._move_lift_pub.publish(Float32(data=float(z)))
+        self.get_logger().info(f'Lift goal → {z}')
 
     def _move_robot(self, x: float, y: float, z: float) -> bool:
         """Publish goal to /move_robot_goal and block until /move_robot_result."""

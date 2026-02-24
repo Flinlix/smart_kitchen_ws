@@ -6,6 +6,8 @@ the result to the joint_trajectory_controller via FollowJointTrajectory.
 
 Topics subscribed:
   /move_robot_goal                   (geometry_msgs/Pose)    – target end-effector position
+  /move_carriage_goal                (std_msgs/Float32)      – carriage position goal
+  /move_lift_goal                    (std_msgs/Float32)      – lift position goal
   /robot_description                 (std_msgs/String)       – URDF for IK chain
   /joint_states                      (sensor_msgs/JointState)
 
@@ -78,11 +80,15 @@ class MovingNode(Node):
         self.create_subscription(Pose, '/move_robot_goal', self._on_goal, 10)
         self._result_pub = self.create_publisher(Bool, '/move_robot_result', 10)
 
-        # Carriage and lift position setpoint publishers
+        # Carriage and lift: receive goals, forward to ELMO drives
         self._carriage_pub = self.create_publisher(
             Float32, '/elmo/id1/carriage/position/set', 10)
         self._lift_pub = self.create_publisher(
             Float32, '/elmo/id1/lift/position/set', 10)
+        self.create_subscription(
+            Float32, '/move_carriage_goal', self._on_carriage_goal, 10)
+        self.create_subscription(
+            Float32, '/move_lift_goal', self._on_lift_goal, 10)
 
         # Joint trajectory action client
         self._traj_client = ActionClient(
@@ -275,17 +281,15 @@ class MovingNode(Node):
 
     # ── carriage / lift control ──────────────────────────────────────────
 
-    def move_carriage_and_lift(self, carriage_pos: float, lift_pos: float) -> None:
-        """Publish position setpoints for the carriage and the lift axes.
+    def _on_carriage_goal(self, msg: Float32) -> None:
+        """Forward a carriage position goal to the ELMO drive."""
+        self._carriage_pub.publish(Float32(data=msg.data))
+        self.get_logger().info(f'Carriage setpoint → {msg.data}')
 
-        Args:
-            carriage_pos: Desired carriage position in metres (or native units).
-            lift_pos:     Desired lift position in metres (or native units).
-        """
-        self._carriage_pub.publish(Float32(data=float(carriage_pos)))
-        self._lift_pub.publish(Float32(data=float(lift_pos)))
-        self.get_logger().info(
-            f'Carriage setpoint → {carriage_pos}  |  Lift setpoint → {lift_pos}')
+    def _on_lift_goal(self, msg: Float32) -> None:
+        """Forward a lift position goal to the ELMO drive."""
+        self._lift_pub.publish(Float32(data=msg.data))
+        self.get_logger().info(f'Lift setpoint → {msg.data}')
 
 
 def main(args=None):

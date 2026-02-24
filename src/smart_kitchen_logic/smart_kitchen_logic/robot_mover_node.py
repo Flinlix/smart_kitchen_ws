@@ -1,179 +1,234 @@
 #!/usr/bin/env python3
+"""Robot Mover Node — exposes /move_to_joints as a ROS 2 action server.
+
+Action  : smart_kitchen_interfaces/action/MoveToJoints
+  Goal     joint_angles (float64[6])  — target positions in radians
+           duration_sec (float64)     — time to reach the position
+  Feedback elapsed_sec  (float64)     — seconds since goal was accepted
+  Result   success      (bool)
+           message      (string)
+
+Internally forwards every goal to the joint_trajectory_controller via
+FollowJointTrajectory and maps the outcome back to the action result.
+
+Emergency stop: subscribing to /emergency_stop (std_msgs/Bool) cancels
+the in-flight trajectory and aborts the active action goal.
+"""
+
+import threading
 
 import rclpy
+import rclpy.executors
+from rclpy.action import ActionClient, ActionServer
+from rclpy.action.server import GoalResponse, CancelResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-from rclpy.action import ActionClient
-from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
-from std_msgs.msg import Bool, Float64MultiArray
+from std_msgs.msg import Bool
+from smart_kitchen_interfaces.action import MoveToJoints
 
-# Latched QoS — late subscribers still receive the last message
-_LATCHED_QOS = QoSProfile(
-    depth=1,
-    durability=DurabilityPolicy.TRANSIENT_LOCAL,
-    reliability=ReliabilityPolicy.RELIABLE,
-)
+
+JOINT_NAMES = [
+    'joint_1', 'joint_2', 'joint_3',
+    'joint_4', 'joint_5', 'joint_6',
+]
 
 
 class RobotMoverNode(Node):
     def __init__(self):
         super().__init__('robot_mover_node')
 
-        self.declare_parameter('target_joints', [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # ReentrantCallbackGroup lets the execute_callback block on an Event
+        # while other callbacks (trajectory result, emergency stop) still run.
+        self._cb_group = ReentrantCallbackGroup()
 
-        self.action_client = ActionClient(
-            self, FollowJointTrajectory,
-            '/joint_trajectory_controller/follow_joint_trajectory')
-        self.goal_handle = None
+        # ── /move_to_joints action server ────────────────────────────────
+        self._move_server = ActionServer(
+            self,
+            MoveToJoints,
+            '/move_to_joints',
+            execute_callback=self._execute_callback,
+            goal_callback=self._goal_callback,
+            cancel_callback=self._cancel_callback,
+            callback_group=self._cb_group,
+        )
 
-        self.stop_sub = self.create_subscription(
-            Bool, '/emergency_stop', self.emergency_stop_callback, 10)
+        # ── FollowJointTrajectory action client ──────────────────────────
+        self._traj_client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            '/joint_trajectory_controller/follow_joint_trajectory',
+            callback_group=self._cb_group,
+        )
 
-        # Accept joint goals from other nodes (e.g. init_node)
+        # ── Emergency stop ───────────────────────────────────────────────
         self.create_subscription(
-            Float64MultiArray, '/move_joints_goal',
-            self._on_joints_goal, 10)
+            Bool, '/emergency_stop',
+            self._emergency_stop_callback,
+            10, callback_group=self._cb_group,
+        )
 
-        # Publish movement result so other nodes can react
-        self._result_pub = self.create_publisher(
-            Bool, '/move_joints_result', 10)
+        # Shared state (protected by the fact that only one goal runs at once)
+        self._traj_goal_handle = None
+        self._traj_done = threading.Event()
+        self._traj_success = False
+        self._traj_message = ''
 
-        # Latched: late subscribers (e.g. init_node) still get the ready signal
-        self._ready_pub = self.create_publisher(
-            Bool, '/move_joints_ready', _LATCHED_QOS)
+        self.get_logger().info(
+            'Robot Mover Node started. Action server /move_to_joints is ready.')
 
-        self.current_target = None
-        self.is_moving = False
-        self.obstacle_detected = False
-        self._server_ready = False
-        self._waiting_to_resume = False  # True after stop, cleared on resume
+    # ── /move_to_joints server: goal / cancel ─────────────────────────────
 
-        self.joint_names = [
-            'joint_1', 'joint_2', 'joint_3',
-            'joint_4', 'joint_5', 'joint_6',
-        ]
-        self.get_logger().info('Robot Mover Node initialized. Ready for commands.')
+    def _goal_callback(self, goal_request):
+        """Accept or reject an incoming MoveToJoints goal."""
+        if self._traj_goal_handle is not None:
+            self.get_logger().warn('Goal rejected — a movement is already in progress.')
+            return GoalResponse.REJECT
+        self.get_logger().info(
+            f'Goal received: joints={list(goal_request.joint_angles)}, '
+            f'duration={goal_request.duration_sec} s'
+        )
+        return GoalResponse.ACCEPT
 
-    # ── emergency stop / resume ─────────────────────────────────────────
-    def emergency_stop_callback(self, msg):
-        """Listens for triggers from the Safety Monitor."""
-        prev = self.obstacle_detected
-        self.obstacle_detected = msg.data
+    def _cancel_callback(self, goal_handle):
+        """Accept cancel requests from the client."""
+        self.get_logger().info('Cancel requested by client.')
+        self._cancel_trajectory()
+        return CancelResponse.ACCEPT
 
-        if self.obstacle_detected and self.is_moving:
-            self.get_logger().warn('EMERGENCY STOP — cancelling movement!')
-            self.cancel_movement()
-            self._waiting_to_resume = True
+    # ── /move_to_joints server: execution ─────────────────────────────────
 
-        elif not self.obstacle_detected and prev and self._waiting_to_resume:
-            # Resume only once on the falling edge (True → False)
-            self._waiting_to_resume = False
-            self.get_logger().info('Clearance received — resuming movement.')
-            if self.current_target:
-                self.send_goal(self.current_target, duration_sec=4.0)
+    def _execute_callback(self, goal_handle):
+        """Run in its own thread (MultiThreadedExecutor).
 
-    # ── joints-goal topic ────────────────────────────────────────────────
-    def _on_joints_goal(self, msg: Float64MultiArray) -> None:
-        """Receive a joint goal from another node and execute it."""
-        self.get_logger().info(f'Received /move_joints_goal: {list(msg.data)}')
-        self.send_goal(list(msg.data))
+        Sends the trajectory to FollowJointTrajectory, publishes elapsed-time
+        feedback once per second, then returns the MoveToJoints result once
+        the trajectory finishes (or is cancelled / aborted).
+        """
+        req = goal_handle.request
+        self.get_logger().info(
+            f'Executing goal: joints={list(req.joint_angles)}, '
+            f'duration={req.duration_sec} s'
+        )
 
-    # ── movement ────────────────────────────────────────────────────────
-    def send_goal(self, target_positions, duration_sec=5.0):
-        """Send a trajectory goal without blocking the executor."""
-        self.current_target = target_positions
+        # ── wait for trajectory controller ───────────────────────────────
+        if not self._traj_client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error('Trajectory controller unavailable.')
+            result = MoveToJoints.Result()
+            result.success = False
+            result.message = 'Trajectory controller unavailable.'
+            goal_handle.abort()
+            return result
 
-        if not self._server_ready:
-            self.get_logger().warn('Action server not ready yet — skipping goal.')
-            return
-
-        goal_msg = FollowJointTrajectory.Goal()
-        goal_msg.trajectory.joint_names = self.joint_names
-
+        # ── build and send FollowJointTrajectory goal ─────────────────────
+        traj_goal = FollowJointTrajectory.Goal()
+        traj_goal.trajectory.joint_names = JOINT_NAMES
         point = JointTrajectoryPoint()
-        point.positions = list(target_positions)
-        point.time_from_start = Duration(sec=int(duration_sec), nanosec=0)
-        goal_msg.trajectory.points.append(point)
+        point.positions = list(req.joint_angles)
+        point.time_from_start = Duration(sec=int(req.duration_sec), nanosec=0)
+        traj_goal.trajectory.points.append(point)
 
-        self.get_logger().info(f'Sending trajectory goal: {target_positions}')
-        future = self.action_client.send_goal_async(goal_msg)
-        future.add_done_callback(self.goal_response_callback)
+        self._traj_done.clear()
+        send_future = self._traj_client.send_goal_async(traj_goal)
+        send_future.add_done_callback(self._on_traj_accepted)
 
-    def goal_response_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.is_moving = False
-            self.get_logger().error('Goal was rejected by the controller.')
+        # ── publish feedback (elapsed seconds) until done ─────────────────
+        start_ns = self.get_clock().now().nanoseconds
+        feedback = MoveToJoints.Feedback()
+        while not self._traj_done.wait(timeout=1.0):
+            if goal_handle.is_cancel_requested:
+                self._cancel_trajectory()
+                # Give the cancel time to propagate
+                self._traj_done.wait(timeout=5.0)
+                break
+            feedback.elapsed_sec = (
+                self.get_clock().now().nanoseconds - start_ns) * 1e-9
+            goal_handle.publish_feedback(feedback)
+
+        # ── resolve the action goal ───────────────────────────────────────
+        result = MoveToJoints.Result()
+        result.success = self._traj_success
+        result.message = self._traj_message
+
+        if result.success:
+            goal_handle.succeed()
+        elif goal_handle.is_cancel_requested:
+            goal_handle.canceled()
+        else:
+            goal_handle.abort()
+
+        self._traj_goal_handle = None
+        self.get_logger().info(
+            f'Goal finished — success={result.success}, msg="{result.message}"'
+        )
+        return result
+
+    # ── FollowJointTrajectory callbacks ───────────────────────────────────
+
+    def _on_traj_accepted(self, future) -> None:
+        traj_goal_handle = future.result()
+        if not traj_goal_handle.accepted:
+            self.get_logger().error('Trajectory goal rejected by controller.')
+            self._traj_success = False
+            self._traj_message = 'Trajectory goal rejected by controller.'
+            self._traj_done.set()
             return
 
-        self.goal_handle = goal_handle
-        self.is_moving = True
-        self.get_logger().info('Goal accepted — robot is moving.')
+        self._traj_goal_handle = traj_goal_handle
+        self.get_logger().info('Trajectory accepted — arm is moving.')
+        result_future = traj_goal_handle.get_result_async()
+        result_future.add_done_callback(self._on_traj_result)
 
-        # Monitor the result so is_moving is cleared when the goal finishes
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self.goal_result_callback)
-
-    def goal_result_callback(self, future):
-        result = future.result()
-        status = result.status
-        self.is_moving = False
+    def _on_traj_result(self, future) -> None:
+        status = future.result().status
         success = status == GoalStatus.STATUS_SUCCEEDED
         if success:
-            self.get_logger().info('Trajectory completed successfully.')
+            msg = 'Arm reached the target position.'
+            self.get_logger().info(msg)
         elif status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info('Trajectory was cancelled.')
+            msg = 'Trajectory was cancelled.'
+            self.get_logger().warn(msg)
         else:
-            self.get_logger().warn(f'Trajectory finished with status {status}.')
-        result_msg = Bool()
-        result_msg.data = success
-        self._result_pub.publish(result_msg)
-        self.get_logger().info(f'Published /move_joints_result = {success}')
+            msg = f'Trajectory ended with status {status}.'
+            self.get_logger().error(msg)
 
-    # ── cancel ──────────────────────────────────────────────────────────
-    def cancel_movement(self):
-        self.is_moving = False
-        if self.goal_handle is not None:
-            self.get_logger().info('Cancelling current goal...')
-            cancel_future = self.goal_handle.cancel_goal_async()
+        self._traj_success = success
+        self._traj_message = msg
+        self._traj_done.set()   # unblocks _execute_callback
+
+    # ── emergency stop ────────────────────────────────────────────────────
+
+    def _emergency_stop_callback(self, msg: Bool) -> None:
+        if msg.data and self._traj_goal_handle is not None:
+            self.get_logger().warn('EMERGENCY STOP received — cancelling trajectory!')
+            self._cancel_trajectory()
+
+    def _cancel_trajectory(self) -> None:
+        if self._traj_goal_handle is not None:
+            cancel_future = self._traj_goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(
-                lambda f: self.get_logger().info('Cancel request processed.'))
+                lambda f: self.get_logger().info('Trajectory cancel request sent.'))
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = RobotMoverNode()
 
-    def _on_server_ready():
-        """Called once the action server is available."""
-        node._server_ready = True
-        target = node.get_parameter('target_joints').value
-        node.get_logger().info(f'Action server ready — sending initial goal: {target}')
-        # Announce readiness so other nodes can start sending goals
-        ready_msg = Bool()
-        ready_msg.data = True
-        node._ready_pub.publish(ready_msg)
-        node.send_goal(target, duration_sec=8.0)
-
-    def _check_server():
-        """Non-blocking poll for action server availability."""
-        if node.action_client.server_is_ready():
-            node.destroy_timer(node._poll_timer)
-            _on_server_ready()
-
-    # Poll every 2 s — never blocks the executor
-    node._poll_timer = node.create_timer(2.0, _check_server)
+    # MultiThreadedExecutor is required so that _execute_callback can block
+    # on threading.Event while trajectory / emergency-stop callbacks still run.
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(node)
 
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
-
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
