@@ -2,13 +2,14 @@
 """Planning node: aruco tracking, IK computation, and motion orchestration.
 
 Subscribes:
-  /aruco_detections     (aruco_opencv_msgs/ArucoDetection) – camera-frame detections
-  /aruco_pose           (aruco_opencv_msgs/ArucoDetection) – base_link-frame poses
-  /robot_description    (std_msgs/String)                  – URDF for IK chain
-  /joint_states         (sensor_msgs/JointState)           – current joint positions
-  /move_robot_result    (std_msgs/Bool)
-  /move_carriage_result (std_msgs/Bool)
-  /move_lift_result     (std_msgs/Bool)
+  /aruco_detections                 (aruco_opencv_msgs/ArucoDetection) – camera-frame detections
+  /aruco_pose                       (aruco_opencv_msgs/ArucoDetection) – base_link-frame poses
+  /robot_description                (std_msgs/String)                  – URDF for IK chain
+  /joint_states                     (sensor_msgs/JointState)           – current joint positions
+  /elmo/id1/carriage/position/get   (std_msgs/Float32)                 – current carriage y
+  /move_robot_result                (std_msgs/Bool)
+  /move_carriage_result             (std_msgs/Bool)
+  /move_lift_result                 (std_msgs/Bool)
 
 Publishes:
   /move_robot_goal      (std_msgs/Float64MultiArray)       – joint angle goals
@@ -25,6 +26,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Pose
@@ -81,7 +83,7 @@ class PlanningNode(Node):
             JointState, '/joint_states', self._on_joint_states, 10)
 
         # ── Aruco tag tracking ────────────────────────────────────────────
-        # {marker_id: {'pose': Pose (base_link), 'distance': float (camera → aruco_tag)}}
+        # {marker_id: {'pose': Pose (base_link), 'distance': float, 'global_y': float}}
         self._aruco_tags: dict[int, dict] = {}
 
         self.create_subscription(
@@ -105,6 +107,12 @@ class PlanningNode(Node):
         self.create_subscription(
             Bool, '/move_carriage_result', self._on_carriage_result, 10)
 
+        # ── Carriage position feedback (for global aruco coords) ──────────
+        self._carriage_y = 0.0
+        self.create_subscription(
+            Float32, '/elmo/id1/carriage/position/get',
+            self._on_carriage_position, 10)
+
         # ── Lift (Z-axis) ─────────────────────────────────────────────────
         self._move_lift_pub = self.create_publisher(
             Float32, '/move_lift_goal', 10)
@@ -120,9 +128,11 @@ class PlanningNode(Node):
         self._grip_done = threading.Event()
         self._grip_success = False
 
-        # ── Main loop ─────────────────────────────────────────────────────
+        # ── Main loop (own callback group so blocking doesn't starve subs) ─
         self._processed_tags: set[int] = set()
-        self._main_timer = self.create_timer(2.0, self._main_loop)
+        self._timer_cb_group = MutuallyExclusiveCallbackGroup()
+        self._main_timer = self.create_timer(
+            2.0, self._main_loop, callback_group=self._timer_cb_group)
 
         self.get_logger().info('Planning node started.')
 
@@ -203,6 +213,7 @@ class PlanningNode(Node):
                     self._aruco_tags[mid] = {
                         'pose': pose_base,
                         'distance': dist,
+                        'global_y': pose_base.position.y + self._carriage_y,
                     }
                     self.get_logger().info(
                         f'Aruco {mid}: updated (dist={dist:.3f}m)')
@@ -219,6 +230,7 @@ class PlanningNode(Node):
                     self._aruco_tags[mid] = {
                         'pose': marker.pose,
                         'distance': float('inf'),
+                        'global_y': marker.pose.position.y + self._carriage_y,
                     }
                     self.get_logger().info(
                         f'Aruco {mid}: added from /aruco_pose')
@@ -268,7 +280,7 @@ class PlanningNode(Node):
         return self._send_joint_goal(joints)
 
     def move_to_aruco(self, marker_id: int) -> bool:
-        """Move the robot end-effector to a tracked aruco tag's pose."""
+        """Align carriage to the tag's global y, then move the arm to the tag."""
         with self._lock:
             entry = self._aruco_tags.get(marker_id)
 
@@ -277,8 +289,20 @@ class PlanningNode(Node):
             return False
 
         self.get_logger().info(
-            f'Moving to aruco {marker_id} (dist={entry["distance"]:.3f}m)')
-        return self.move_to_pose(entry['pose'])
+            f'Moving to aruco {marker_id} '
+            f'(global_y={entry["global_y"]:.3f}, dist={entry["distance"]:.3f}m)')
+
+        if not self._move_carriage(entry['global_y']):
+            self.get_logger().error(f'Carriage alignment failed for aruco {marker_id}')
+            return False
+
+        p = entry['pose'].position
+        ik_pose = Pose()
+        ik_pose.position.x = p.x
+        ik_pose.position.y = 0.0
+        ik_pose.position.z = p.z
+        ik_pose.orientation = entry['pose'].orientation
+        return self.move_to_pose(ik_pose)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Robot movement (joint goals → moving_node)
@@ -334,6 +358,9 @@ class PlanningNode(Node):
     def _on_carriage_result(self, msg: Bool) -> None:
         self._carriage_success = msg.data
         self._carriage_done.set()
+
+    def _on_carriage_position(self, msg: Float32) -> None:
+        self._carriage_y = msg.data
 
     # ═══════════════════════════════════════════════════════════════════════
     # Lift control (Z-direction)
@@ -410,29 +437,37 @@ class PlanningNode(Node):
     # ═══════════════════════════════════════════════════════════════════════
 
     def _main_loop(self):
-        """Iterate over every detected unique aruco tag."""
+        """For each unprocessed tag: align carriage, then solve IK."""
         tags = self.get_aruco_tags()
         if not tags:
             return
 
         for mid, entry in tags.items():
+            if mid in self._processed_tags:
+                continue
             if entry['pose'] is None:
                 continue
 
             p = entry['pose'].position
             self.get_logger().info(
-                f'[Main] Tag {mid}: '
-                f'({p.x:.3f}, {p.y:.3f}, {p.z:.3f}), '
-                f'dist={entry["distance"]:.3f}m')
+                f'[Main] Tag {mid}: local=({p.x:.3f}, {p.y:.3f}, {p.z:.3f}), '
+                f'global_y={entry["global_y"]:.3f}, dist={entry["distance"]:.3f}m')
 
-            # TODO: per-tag processing steps (to be implemented later)
+            if not self.move_to_aruco(mid):
+                self.get_logger().error(f'[Main] Failed to reach tag {mid}')
+                continue
+
+            self.get_logger().info(f'[Main] Reached tag {mid}')
+            self._processed_tags.add(mid)
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = PlanningNode()
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     node.destroy_node()

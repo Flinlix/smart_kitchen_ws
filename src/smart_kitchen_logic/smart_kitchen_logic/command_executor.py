@@ -50,6 +50,10 @@ COMMANDS_PATH = (
 
 DEFAULT_DURATION_SEC = 8.0
 
+GRIPPER_WAYPOINTS = ['open_gripper', 'close_gripper']
+CUP_COMMAND = ['pick_cup']
+
+
 class CommandExecutorNode(Node):
     def __init__(self):
         super().__init__('command_executor_node')
@@ -139,32 +143,24 @@ class CommandExecutorNode(Node):
         command_name = goal_handle.request.command_name
         command = self._commands[command_name]
         
-        # Build parameter substitution dict
-        params = dict(zip(
-            goal_handle.request.parameter_keys,
-            goal_handle.request.parameter_values))
+        cup_id = goal_handle.request.cup_id if goal_handle.request.cup_id else None        
+        waypoint_names = command.get('waypoints', [])
         
-        # Substitute parameters in waypoint names (e.g., "pick_{cup_id}" -> "pick_cup_1")
-        waypoint_names = []
-        for wp_template in command.get('waypoints', []):
-            try:
-                waypoint_name = wp_template.format(**params)
-                waypoint_names.append(waypoint_name)
-            except KeyError as e:
-                self.get_logger().error(
-                    f'Missing parameter {e} for waypoint template "{wp_template}"')
-                result = ExecuteCommand.Result()
-                result.success = False
-                result.message = f'Missing parameter: {e}'
-                goal_handle.abort()
-                return result
-
-        self.get_logger().info(
-            f'Executing command "{command_name}" with params {params} '
-            f'→ waypoints: {waypoint_names}')
-
         feedback = ExecuteCommand.Feedback()
         result = ExecuteCommand.Result()
+        
+        if command_name in CUP_COMMAND and not cup_id:
+            self.get_logger().warn(
+                f'Command "{command_name}" requires a cup_id parameter. '
+                f'Available cup_ids: {goal_handle.request.cup_ids}')
+            result.success = False
+            result.message = 'Missing required parameter: cup_id'
+            goal_handle.reject()
+            return result
+        
+        self.get_logger().info(
+            f'Executing command "{command_name}" with cup_id: {cup_id} '
+            f'→ waypoints: {waypoint_names}')
 
         total_waypoints = len(waypoint_names)
 
@@ -179,13 +175,11 @@ class CommandExecutorNode(Node):
 
             # Publish feedback
             feedback.current_waypoint = waypoint_name
-            feedback.waypoint_index = idx
-            feedback.total_waypoints = total_waypoints
-            feedback.progress_percent = (idx / total_waypoints) * 100.0
+            feedback.progress = f"{idx+1}/{total_waypoints}"
             goal_handle.publish_feedback(feedback)
 
-            # Handle special commands (gripper)
-            if waypoint_name in ['open_gripper', 'close_gripper']:
+            # Handle gripper
+            if waypoint_name in GRIPPER_WAYPOINTS:
                 success = self._execute_gripper(waypoint_name)
                 if not success:
                     result.success = False
@@ -204,7 +198,6 @@ class CommandExecutorNode(Node):
                 return result
 
             success = await self._execute_waypoint(waypoint_name)
-            
             if not success:
                 self.get_logger().error(f'Failed to execute waypoint: {waypoint_name}')
                 result.success = False
@@ -291,7 +284,7 @@ class CommandExecutorNode(Node):
         
         return success
 
-    async def _execute_waypoint(self, waypoint_name: str) -> bool:
+    async def _execute_waypoint(self, waypoint_name: str, cup_id: str = None) -> bool:
         """Execute a single waypoint."""
         waypoint = self._waypoints[waypoint_name]
 
@@ -301,13 +294,13 @@ class CommandExecutorNode(Node):
         lift = waypoint.get('lift', None)
         duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
 
-        # Set carriage/lift if specified - TODO: make this more secure
+        # Set carriage/lift if specified - TODO: make this more secure & decide when to move them (before/after arm movement)
         if carriage is not None:
             self._carriage_pub.publish(Float32(data=float(carriage)))
         if lift is not None:
             self._lift_pub.publish(Float32(data=float(lift)))
 
-        # Create and send goal
+        # Create and send goal - TODO adjust angles here according to cup_id
         goal = MoveToJoints.Goal()
         goal.joint_angles = [float(j) for j in joints]
         goal.duration_sec = float(duration)
@@ -319,10 +312,9 @@ class CommandExecutorNode(Node):
             self.get_logger().error(f'Waypoint execution failed: {message}')
             return False
 
-        # Wait after movement (if specified)
-        if wait_after > 0.0:
-            time.sleep(wait_after)
-
+        # # Wait after movement (if specified)
+        # if wait_after > 0.0:
+        #     time.sleep(wait_after)
         return True
 
 
