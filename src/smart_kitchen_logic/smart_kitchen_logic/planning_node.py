@@ -89,7 +89,7 @@ class PlanningNode(Node):
         self._aruco_tags: dict[int, dict] = {}
 
         self.declare_parameter("aruco_distances_topic", "/aruco_distances")
-        self.declare_parameter("aruco_distances_frame", "robotiq_85_base_link") # TODO: Change here to camera
+        self.declare_parameter("aruco_distances_frame", "camera_link")
         aruco_topic = self.get_parameter("aruco_distances_topic").value
         self._aruco_distances_frame = self.get_parameter("aruco_distances_frame").value
 

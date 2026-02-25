@@ -395,7 +395,7 @@ def generate_launch_description():
             "vision",
             description="Use arm mounted realsense",
             choices=["true", "false"],
-            default_value="false",
+            default_value="true",
         )
     )
     # General arguments
@@ -475,7 +475,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "gripper",
-            default_value="robotiq_2f_85",
+            default_value="robotiq_2f_140",
             choices=["robotiq_2f_85", "robotiq_2f_140", "gen3_lite_2f", ""],
             description="Gripper to use",
         )

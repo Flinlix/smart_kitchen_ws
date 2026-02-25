@@ -4,8 +4,8 @@
   <!-- ── Robot arm arguments (mirror gen3.xacro) ─────────────────────── -->
   <xacro:arg name="arm"                              default="gen3" />
   <xacro:arg name="dof"                              default="6" />
-  <xacro:arg name="vision"                           default="false" />
-  <xacro:arg name="gripper"                          default="robotiq_2f_85" />
+  <xacro:arg name="vision"                           default="true" />
+  <xacro:arg name="gripper"                          default="robotiq_2f_140" />
   <xacro:arg name="sim_gazebo"                       default="false" />
   <xacro:arg name="prefix"                           default="" />
   <xacro:arg name="simulation_controllers"           default="" />
@@ -152,7 +152,7 @@
     parent="rail_yaw_link"
     arm="$(arg arm)"
     gripper="$(arg gripper)"
-    gripper_joint_name="robotiq_85_left_knuckle_joint"
+    gripper_joint_name="finger_joint"
     dof="$(arg dof)"
     vision="$(arg vision)"
     robot_ip="$(arg robot_ip)"
@@ -211,6 +211,21 @@
 
   <gazebo reference="human_link">
     <material>Gazebo/Red</material>
+  </gazebo>
+
+  <!-- ── Preserve empty arm/vision links in Gazebo URDF→SDF conversion ── -->
+  <!-- Without these, gz sdf collapses mass-less fixed-joint children      -->
+  <gazebo reference="end_effector">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+  <gazebo reference="camera_module">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+  <gazebo reference="depth_module">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+  <gazebo reference="color_module">
+    <preserveFixedJoint>true</preserveFixedJoint>
   </gazebo>
 
 </robot>
