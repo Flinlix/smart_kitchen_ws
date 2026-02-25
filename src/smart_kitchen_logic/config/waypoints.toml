@@ -1,38 +1,74 @@
 gripper_open = 0.0
 gripper_close = 0.5
 
-[pre_pick_old]
-joints = [-1.142882, -1.219199, -1.345714, 0.989958, -1.410006, -1.670422]
-time_from_start = 3.0
-carriage = 0.1000
-lift = 0.4000
-
-[home_old]
-joints = [0.002231, -1.216090, -1.385489, -0.065738, -1.383703, -1.551807]
-time_from_start = 3.0
-carriage = 0.1000
-lift = 0.4000
-
 [home]
-joints = [-0.22068, -0.02929, -0.67624, 0.51033, -1.11741, -1.88689]
-time_from_start = 3.0
-carriage = 1.000
-lift = 0.25
-
-[pick]
-joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
-time_from_start = 3.0
-carriage = 0.65
-lift = 0.43
+joints = [0.002231, -1.216090, -1.385489, -0.065738, -1.383703, -1.551807]
+time_from_start = 5.0
+carriage = 0.1000
+lift = 0.4000
 
 [carry]
-joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
-time_from_start = 3.0
-carriage = 0.65
-lift = 0.3
+joints = [-0.168348, -0.630465, -0.738768, 0.136563, -1.514143, -1.570643]
+time_from_start = 10.0
+carriage = 0.2000
+lift = 0.2500
 
-[sink]
-joints = [2.934463, -0.690080, -0.603929, -2.969988, -1.591754, -1.600032]
-time_from_start = 3.0
-carriage = -0.3
-lift = 0.3
+[sink_to_drop]
+joints = [-0.047770, -0.376303, -1.374767, -0.141893, -0.622643, -1.450347]
+time_from_start = 10.0
+carriage = -0.3000
+lift = 0.3000
+
+[detect_cups_table]
+joints = [2.989601, -1.162821, -1.770802, 0.090270, -0.503250, -1.629239]
+time_from_start = 10.0
+carriage = 0.3000
+lift = 0.2500
+
+[detect_cups_sink]
+joints = [2.989602, -1.162805, -1.770794, 0.090269, -0.503246, -1.629239]
+time_from_start = 10.0
+carriage = -0.3000
+lift = 0.2500
+
+[detect_cups_swipe]
+joints = [2.989602, -1.162805, -1.770794, 0.090269, -0.203246, -1.629239]
+time_from_start = 5.0
+carriage = -0.3000
+lift = 0.2500
+
+[intermediate]
+joints = [1.536851, -0.788005, -1.241049, -0.079345, -1.084686, -1.509984]
+time_from_start = 10.0
+carriage = -0.3000
+lift = 0.2500
+
+[intermediate_center_room]
+joints = [1.536850, -0.788002, -1.241045, -0.079342, -1.084683, -1.509986]
+time_from_start = 10.0
+carriage = 0.3000
+lift = 0.2500
+
+[pre_pick_1]
+joints = [-0.168348, -0.630476, -0.738772, 0.136560, -1.514149, -1.570641]
+time_from_start = 10.0
+carriage = 0.3000
+lift = 0.4500
+
+[pick_1]
+joints = [-0.168348, -0.630465, -0.738769, 0.136561, -1.514146, -1.570642]
+time_from_start = 10.0
+carriage = 0.2000
+lift = 0.4500
+
+[pre_pick_2]
+joints = [-2.979833, -0.575134, -0.170605, -0.177551, -1.902677, -1.644874]
+time_from_start = 10.0
+carriage = 1.0000
+lift = 0.4500
+
+[pick_2]
+joints = [-3.060809, -0.599117, -0.892191, -0.245897, -1.228932, -1.524807]
+time_from_start = 10.0
+carriage = 1.0000
+lift = 0.4500

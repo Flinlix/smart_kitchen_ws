@@ -1,6 +1,14 @@
 [pick_cup]
-description = "Pick up cup from counter"
+description = "Pick up cup from counter (unused currently)"
 waypoints = ["pick", "close_gripper"]
+
+[pick_cup_1]
+description = "Pick up cup 1 from counter"
+waypoints = ["pre_pick_1", "pick_1", "close_gripper"]
+
+[pick_cup_2]
+description = "Pick up cup 2 from table"
+waypoints = ["pre_pick_2", "pick_2", "close_gripper"]
 
 [drop_cup]
 description = "Throw cup into sink"
@@ -8,8 +16,24 @@ waypoints = ["open_gripper"]
 
 [to_sink]
 description = "Move to sink position"
-waypoints = ["carry", "sink"]
+waypoints = ["carry", "sink_to_drop"]
 
 [home]
 description = "Return to home position"
 waypoints = ["home"]
+
+[start_detecting]
+description = "From home move to two positions for cup detection"
+waypoints = ["detect_cups_sink", "detect_cups_table", "detect_cups_sink", "detect_cups_swipe"]
+
+[intermediate_move]
+description = "Move to intermediate position in the middle of the room"
+waypoints = ["intermediate_center_room", "intermediate"]
+
+[full_pick_and_drop_1]
+description = "Full pick and drop sequence for cup 1 (after detection)"
+waypoints = [ "intermediate", "pre_pick_1", "pick_1", "close_gripper", "carry", "sink_to_drop", "open_gripper", "intermediate"]
+
+[full_pick_and_drop_2]
+description = "Full pick and drop sequence for cup 2 (after detection)"
+waypoints = [ "intermediate", "pre_pick_2", "pick_2", "close_gripper", "carry", "sink_to_drop", "open_gripper", "intermediate"]
