@@ -1,34 +1,50 @@
+[gripper_close]
+description = "Close gripper"
+waypoints = ["close_gripper"]
+
+[gripper_open]
+description = "Open gripper"
+waypoints = ["open_gripper"]
+
+[home]
+description = "Return to home position"
+waypoints = ["home"]
+
+[init]
+description = "Initial position for robot"
+waypoints = ["home", "open_gripper"]
+
 [pick_cup]
 description = "Pick up cup from counter (unused currently)"
 waypoints = ["pick", "close_gripper"]
 
 [pick_cup_1]
 description = "Pick up cup 1 from counter"
-waypoints = ["pre_pick_1", "pick_1", "close_gripper"]
+waypoints = ["pre_pick_1", "pick_1", "close_gripper", "pre_pick_1"]
 
 [pick_cup_2]
 description = "Pick up cup 2 from table"
-waypoints = ["pre_pick_2", "pick_2", "close_gripper"]
+waypoints = ["pre_pick_2", "pick_2", "close_gripper", "pre_pick_2"]
 
-[drop_cup]
-description = "Throw cup into sink"
-waypoints = ["open_gripper"]
-
-[gripper_close]
-description = "Close gripper"
-waypoints = ["close_gripper"]
+[pick_cup_3]
+description = "Pick up cup 3 from table"
+waypoints = ["pre_pick_3", "pick_3", "close_gripper", "pre_pick_3"]
 
 [to_sink]
 description = "Move to sink position"
 waypoints = ["carry", "sink_to_drop"]
 
-[home]
-description = "Return to home position"
-waypoints = ["home"]
-
 [start_detecting]
 description = "From home move to two positions for cup detection"
-waypoints = ["detect_cups_sink", "detect_cups_table", "detect_cups_sink", "detect_cups_swipe"]
+waypoints = ["detect_cups_table", "detect_cups_sink", "detect_cups_swipe"]
+
+[safe_to_table]
+description = "Move from intermediate safely to table"
+waypoints = ["intermediate", "pre_safety", "safety", "post_safety"]
+
+[safe_to_counter]
+description = "Move from table safely to counter"
+waypoints = ["post_safety", "safety", "pre_safety", "intermediate"]
 
 [full_pick_and_drop_1]
 description = "Full pick and drop sequence for cup 1 (after detection)"
@@ -37,3 +53,7 @@ waypoints = [ "intermediate", "pre_pick_1", "pick_1", "close_gripper", "carry", 
 [full_pick_and_drop_2]
 description = "Full pick and drop sequence for cup 2 (after detection)"
 waypoints = [ "intermediate_center_room", "pre_pick_2", "pick_2", "close_gripper", "sink_to_drop", "open_gripper", "intermediate"]
+
+[full_pick_and_drop_3]
+description = "Full pick and drop sequence for cup 3 (after detection)"
+waypoints = [ "intermediate_center_room", "pre_pick_3", "pick_3", "close_gripper", "pre_pick_3", "sink_to_drop", "open_gripper", "intermediate"]
