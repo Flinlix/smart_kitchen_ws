@@ -37,7 +37,7 @@ from std_msgs.msg import Float32, String
 from smart_kitchen_interfaces.action import ExecuteCommand, MoveToJoints
 
 import tomllib
-import time
+import asyncio
 from pathlib import Path
 
 WAYPOINT_PATH = (
@@ -48,7 +48,7 @@ COMMANDS_PATH = (
     Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
 )
 
-DEFAULT_DURATION_SEC = 8.0
+DEFAULT_DURATION_SEC = 5.0
 
 GRIPPER_WAYPOINTS = ['open_gripper', 'close_gripper']
 CUP_COMMAND = ['pick_cup']
@@ -262,10 +262,13 @@ class CommandExecutorNode(Node):
         goal.command.max_effort = 50.0
 
         # Execute action
+        await self._async_sleep(DEFAULT_DURATION_SEC*2)
         success, message = await self._call_action(self._gripper_client, goal, timeout_sec=5.0)
         
         if not success:
             self.get_logger().error(f'Gripper action failed: {message}')
+            
+        await self._async_sleep(3.0)
         
         return success
 
@@ -277,31 +280,45 @@ class CommandExecutorNode(Node):
         joints = waypoint.get('joints', [])
         carriage = waypoint.get('carriage', None)
         lift = waypoint.get('lift', None)
-        duration = DEFAULT_DURATION_SEC
+        duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
+        wait_after = waypoint.get('wait_after_sec', 0.0)
 
         # Create and send goal - TODO: adjust angles here according to cup_id
         goal = MoveToJoints.Goal()
         goal.joint_angles = [float(j) for j in joints]
         goal.duration_sec = float(duration)
 
-        # Execute action
+        # Execute joint movement first and wait until complete
         success, message = await self._call_action(self._move_client, goal, timeout_sec=duration + 5.0)
         
         if not success:
             self.get_logger().error(f'Waypoint execution failed: {message}')
             return False
         
-        # Set carriage/lift if specified - TODO: make this more secure & decide when to move them (before/after arm movement)
-        time.sleep(0.5)
+        self.get_logger().info(f'Joints reached target position for waypoint: {waypoint_name}')
+        
+        # Wait a bit to ensure joints are fully settled
+        await self._async_sleep(duration)
+        
+        # Now move carriage/lift after joints are in position
         if carriage is not None:
+            self.get_logger().info(f'Setting carriage to: {carriage}')
             self._carriage_pub.publish(Float32(data=float(carriage)))
+            await self._async_sleep(duration/2)
         if lift is not None:
+            self.get_logger().info(f'Setting lift to: {lift}')
             self._lift_pub.publish(Float32(data=float(lift)))
+            await self._async_sleep(duration/2)
 
-        # # Wait after movement (if specified)
-        # if wait_after > 0.0:
-        #     time.sleep(wait_after)
+        # Wait after movement if specified
+        if wait_after > 0.0:
+            await self._async_sleep(wait_after)
+        
         return True
+    
+    async def _async_sleep(self, seconds: float) -> None:
+        """Non-blocking async sleep."""
+        await asyncio.sleep(seconds)
 
 
 def main(args=None):
