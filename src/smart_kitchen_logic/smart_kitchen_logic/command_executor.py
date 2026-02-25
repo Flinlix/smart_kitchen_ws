@@ -41,11 +41,11 @@ import time
 from pathlib import Path
 
 WAYPOINT_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
+    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
 )
 
 COMMANDS_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
+    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
 )
 
 DEFAULT_DURATION_SEC = 3.0
@@ -262,13 +262,13 @@ class CommandExecutorNode(Node):
         goal.command.max_effort = 50.0
 
         # Execute action
-        self._sleep(DEFAULT_DURATION_SEC)
+        self._sleep(DEFAULT_DURATION_SEC/2)
         success, message = await self._call_action(self._gripper_client, goal, timeout_sec=5.0)
         
         if not success:
             self.get_logger().error(f'Gripper action failed: {message}')
             
-        self._sleep(3.0)
+        self._sleep(DEFAULT_DURATION_SEC/2)
         
         return success
 
@@ -280,7 +280,7 @@ class CommandExecutorNode(Node):
         joints = waypoint.get('joints', [])
         carriage = waypoint.get('carriage', None)
         lift = waypoint.get('lift', None)
-        duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
+        duration = DEFAULT_DURATION_SEC # duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
         wait_after = waypoint.get('wait_after_sec', 0.0)
 
         # Create and send goal - TODO: adjust angles here according to cup_id
@@ -304,11 +304,11 @@ class CommandExecutorNode(Node):
         if carriage is not None:
             self.get_logger().info(f'Setting carriage to: {carriage}')
             self._carriage_pub.publish(Float32(data=float(carriage)))
-            self._sleep(2.0)
+            self._sleep(DEFAULT_DURATION_SEC/2)
         if lift is not None:
             self.get_logger().info(f'Setting lift to: {lift}')
             self._lift_pub.publish(Float32(data=float(lift)))
-            self._sleep(2.0)
+            self._sleep(DEFAULT_DURATION_SEC/2)
 
         # Wait after movement if specified
         if wait_after > 0.0:

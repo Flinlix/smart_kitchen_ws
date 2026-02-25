@@ -30,9 +30,9 @@ waypoints = ["pre_pick_2", "pick_2", "close_gripper", "pre_pick_2"]
 description = "Pick up cup 3 from table"
 waypoints = ["pre_pick_3", "pick_3", "close_gripper", "pre_pick_3"]
 
-[to_sink]
+[drop_cup]
 description = "Move to sink position"
-waypoints = ["carry", "sink_to_drop"]
+waypoints = ["carry", "sink_to_drop", "open_gripper", "intermediate"]
 
 [start_detecting]
 description = "From home move to two positions for cup detection"
@@ -45,6 +45,10 @@ waypoints = ["intermediate", "pre_safety", "safety", "post_safety"]
 [safe_to_counter]
 description = "Move from table safely to counter"
 waypoints = ["post_safety", "safety", "pre_safety", "intermediate"]
+
+[unsafe_to_table]
+description = "Move from intermediate to table without safety (for testing)"
+waypoints = ["intermediate_center_room"]
 
 [full_pick_and_drop_1]
 description = "Full pick and drop sequence for cup 1 (after detection)"
