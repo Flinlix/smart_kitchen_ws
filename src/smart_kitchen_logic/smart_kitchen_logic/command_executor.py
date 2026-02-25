@@ -25,6 +25,10 @@ Topics published:
   /elmo/id1/carriage/position/set  (std_msgs/Float32)
   /elmo/id1/lift/position/set      (std_msgs/Float32)
   /robotiq_gripper_controller/gripper_cmd  (std_msgs/String)  # "open" or "close"
+
+Topics subscribed:
+  /elmo/id1/carriage/position/get  (std_msgs/Float32)
+  /elmo/id1/lift/position/get      (std_msgs/Float32)
 """
 
 import rclpy
@@ -49,10 +53,10 @@ COMMANDS_PATH = (
 )
 
 DEFAULT_DURATION_SEC = 3.0
+DEFAULT_WAITING_SEC = 0.5
 
 GRIPPER_WAYPOINTS = ['open_gripper', 'close_gripper']
 CUP_COMMAND = ['pick_cup']
-
 
 class CommandExecutorNode(Node):
     def __init__(self):
@@ -66,6 +70,14 @@ class CommandExecutorNode(Node):
             Float32, '/elmo/id1/carriage/position/set', 10)
         self._lift_pub = self.create_publisher(
             Float32, '/elmo/id1/lift/position/set', 10)
+        
+        # Subscribers for position feedback
+        self._carriage_sub = self.create_subscription(
+            Float32, '/elmo/id1/carriage/position/get',
+            self._on_carriage_position, 10)
+        self._lift_sub = self.create_subscription(
+            Float32, '/elmo/id1/lift/position/get',
+            self._on_lift_position, 10)
 
         # Action client for joint movements
         self._move_client = ActionClient(
@@ -99,6 +111,11 @@ class CommandExecutorNode(Node):
         # State tracking
         self._current_goal_handle = None
         self._cancel_requested = False
+        self._waypoint_in_flight = False  # Ensure only one waypoint executes at a time
+        
+        # Position tracking
+        self._current_carriage_position = None
+        self._current_lift_position = None
 
         self.get_logger().info('Command Executor Node initialized')
 
@@ -110,6 +127,14 @@ class CommandExecutorNode(Node):
         
         with open(COMMANDS_PATH, 'rb') as f:
             self._commands = tomllib.load(f)
+    
+    def _on_carriage_position(self, msg: Float32) -> None:
+        """Callback for carriage position feedback."""
+        self._current_carriage_position = msg.data
+    
+    def _on_lift_position(self, msg: Float32) -> None:
+        """Callback for lift position feedback."""
+        self._current_lift_position = msg.data
 
     ######### Action server callbacks #########
     def _goal_callback(self, goal_request) -> GoalResponse:
@@ -262,13 +287,12 @@ class CommandExecutorNode(Node):
         goal.command.max_effort = 50.0
 
         # Execute action
-        self._sleep(DEFAULT_DURATION_SEC/2)
         success, message = await self._call_action(self._gripper_client, goal, timeout_sec=5.0)
         
         if not success:
             self.get_logger().error(f'Gripper action failed: {message}')
             
-        self._sleep(DEFAULT_DURATION_SEC/2)
+        self._sleep(DEFAULT_WAITING_SEC)  # Wait briefly after gripper action
         
         return success
 
@@ -298,27 +322,77 @@ class CommandExecutorNode(Node):
         self.get_logger().info(f'Joints reached target position for waypoint: {waypoint_name}')
         
         # Wait a bit to ensure joints are fully settled
-        self._sleep(duration/2)
+        self._sleep(DEFAULT_WAITING_SEC)
+        self.get_logger().info(f'Now executing carriage/lift movements for waypoint: {waypoint_name}')
         
         # Now move carriage/lift after joints are in position
         if carriage is not None:
             self.get_logger().info(f'Setting carriage to: {carriage}')
             self._carriage_pub.publish(Float32(data=float(carriage)))
-            self._sleep(DEFAULT_DURATION_SEC/2)
+            success = self._wait_for_position('carriage', float(carriage), timeout_sec=10.0)
+            if not success:
+                self.get_logger().warn(f'Carriage did not reach target position {carriage} in time')
+                return False
+        
         if lift is not None:
             self.get_logger().info(f'Setting lift to: {lift}')
             self._lift_pub.publish(Float32(data=float(lift)))
-            self._sleep(DEFAULT_DURATION_SEC/2)
+            success = self._wait_for_position('lift', float(lift), timeout_sec=10.0)
+            if not success:
+                self.get_logger().warn(f'Lift did not reach target position {lift} in time')
+                return False
 
-        # Wait after movement if specified
+        # Wait after movement (e.g. before gripper action)
         if wait_after > 0.0:
             self._sleep(wait_after)
+        else: 
+            self._sleep(DEFAULT_WAITING_SEC)
         
         return True
     
     def _sleep(self, seconds: float) -> None:
-        """Blocking sleep - safe to use with ReentrantCallbackGroup."""
+        """Blocking sleep"""
         time.sleep(seconds)
+    
+    def _wait_for_position(self, axis: str, target: float, tolerance: float = 0.01, timeout_sec: float = 10.0) -> bool:
+        """Wait until carriage or lift reaches target position.
+        
+        Args:
+            axis: 'carriage' or 'lift'
+            target: Target position value
+            tolerance: Acceptable position error (default: 0.01)
+            timeout_sec: Maximum time to wait (default: 10.0)
+        
+        Returns:
+            True if position reached, False if timeout
+        """
+        start_time = time.time()
+        rate = 0.1  # Check every 100ms
+        
+        while time.time() - start_time < timeout_sec:
+            # Get current position
+            if axis == 'carriage':
+                current = self._current_carriage_position
+            elif axis == 'lift':
+                current = self._current_lift_position
+            else:
+                self.get_logger().error(f'Unknown axis: {axis}')
+                return False
+            
+            # Check if position is reached
+            if current is not None and abs(current - target) <= tolerance:
+                self.get_logger().info(f'{axis.capitalize()} reached target position: {target} (current: {current})')
+                return True
+            
+            # Wait before checking again
+            time.sleep(rate)
+        
+        # Timeout
+        current = self._current_carriage_position if axis == 'carriage' else self._current_lift_position
+        self.get_logger().warn(
+            f'{axis.capitalize()} timeout: target={target}, current={current}, '
+            f'error={abs(current - target) if current is not None else "unknown"}')
+        return False
 
 
 def main(args=None):

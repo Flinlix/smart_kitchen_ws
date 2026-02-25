@@ -32,7 +32,7 @@ waypoints = ["pre_pick_3", "pick_3", "close_gripper", "pre_pick_3"]
 
 [drop_cup]
 description = "Move to sink position"
-waypoints = ["sink_to_drop", "open_gripper", "intermediate"]
+waypoints = ["sink_to_drop", "open_gripper", "sink_to_center", "intermediate"]
 
 [start_detecting]
 description = "From home move to two positions for cup detection"
