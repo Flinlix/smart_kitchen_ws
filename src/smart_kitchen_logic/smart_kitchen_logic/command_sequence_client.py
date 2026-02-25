@@ -6,6 +6,7 @@ Tracks where a human is (left/right) if present. At a decision point you can che
 - check_side 'left'  → only care about human on left; 5x no human left → continue
 - check_side 'right' → only care about human on right; 5x no human right → continue
 - check_side 'either' (default) → human on either side runs alternative; both clear 5x → continue
+if_human_sequence is chosen if at least one True was received in the last 5 messages on the checked topic(s).
 Decision points can be nested: if_human_sequence may contain further decision points.
 Optional else_sequence: run when no human is detected (5x clear) before continuing.
 
@@ -18,6 +19,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from std_msgs.msg import Bool
 from smart_kitchen_interfaces.action import ExecuteCommand
+from collections import deque
 
 CONSECUTIVE_NO_HUMAN_THRESHOLD = 5
 
@@ -34,6 +36,9 @@ class CommandSequenceClient(Node):
         # Human pose state: where is a human (left/right) if present
         self._human_left = False
         self._human_right = False
+        # Last 5 messages per topic: if_human_sequence when at least one True in last 5
+        self._human_left_history = deque(maxlen=5)
+        self._human_right_history = deque(maxlen=5)
         self._consecutive_no_human = 0       # both false (for check_side 'either')
         self._consecutive_no_human_left = 0  # left false (for check_side 'left')
         self._consecutive_no_human_right = 0 # right false (for check_side 'right')
@@ -42,7 +47,7 @@ class CommandSequenceClient(Node):
         self.create_subscription(Bool, '/human_pose/left', self._human_left_cb, 10)
         self.create_subscription(Bool, '/human_pose/right', self._human_right_cb, 10)
         # Publish False on both human_pose topics every 2 seconds (keeps topics active)
-        self.create_timer(2.0, self._publish_human_pose_false)
+        self.create_timer(5.0, self._publish_human_pose_false)
 
         # Decision point handling
         self._decision_point_timer = None
@@ -88,9 +93,11 @@ class CommandSequenceClient(Node):
 
     def _human_left_cb(self, msg: Bool) -> None:
         self._human_left = msg.data
+        self._human_left_history.append(msg.data)
 
     def _human_right_cb(self, msg: Bool) -> None:
         self._human_right = msg.data
+        self._human_right_history.append(msg.data)
 
     def _publish_human_pose_false(self) -> None:
         """Publish False on both /human_pose/left and /human_pose/right every 2 seconds."""
@@ -200,20 +207,21 @@ class CommandSequenceClient(Node):
             self._decision_point_timer = None
 
     def _check_decision_point(self) -> None:
-        """At a decision point: continue if 5x no human on checked side, else run if_human_sequence."""
+        """At a decision point: continue if 5x no human on checked side, else run if_human_sequence.
+        if_human_sequence is chosen when at least one True appears in the last 5 messages on the checked topic(s)."""
         self._update_consecutive_no_human()
         entry = self._current_sequence[self._current_index]
         check_side = entry.get('check_side', 'either')
 
         if check_side == 'left':
             clear = self._consecutive_no_human_left >= CONSECUTIVE_NO_HUMAN_THRESHOLD
-            human_present = self._human_left
+            human_present = any(self._human_left_history)
         elif check_side == 'right':
             clear = self._consecutive_no_human_right >= CONSECUTIVE_NO_HUMAN_THRESHOLD
-            human_present = self._human_right
+            human_present = any(self._human_right_history)
         else:
             clear = self._consecutive_no_human >= CONSECUTIVE_NO_HUMAN_THRESHOLD
-            human_present = self._human_left or self._human_right
+            human_present = any(self._human_left_history) or any(self._human_right_history)
 
         if clear:
             self.get_logger().info(f'No human on {check_side} (5x clear).')
