@@ -26,10 +26,6 @@ waypoints = ["home"]
 description = "From home move to two positions for cup detection"
 waypoints = ["detect_cups_sink", "detect_cups_table", "detect_cups_sink", "detect_cups_swipe"]
 
-[intermediate_move]
-description = "Move to intermediate position in the middle of the room"
-waypoints = ["intermediate_center_room", "intermediate"]
-
 [full_pick_and_drop_1]
 description = "Full pick and drop sequence for cup 1 (after detection)"
 waypoints = [ "intermediate", "pre_pick_1", "pick_1", "close_gripper", "carry", "sink_to_drop", "open_gripper", "intermediate"]

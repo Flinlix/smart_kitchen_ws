@@ -277,7 +277,7 @@ class CommandExecutorNode(Node):
         joints = waypoint.get('joints', [])
         carriage = waypoint.get('carriage', None)
         lift = waypoint.get('lift', None)
-        duration = waypoint.get('time_from_start', DEFAULT_DURATION_SEC)
+        duration = DEFAULT_DURATION_SEC
 
         # Create and send goal - TODO: adjust angles here according to cup_id
         goal = MoveToJoints.Goal()
