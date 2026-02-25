@@ -22,7 +22,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "human_pose_from_aruco = aruco_human_tracker.human_pose_from_aruco:main",
+            "aruco_all_distance = aruco_human_tracker.aruco_all_distance_node:main",
         ],
     },
 )

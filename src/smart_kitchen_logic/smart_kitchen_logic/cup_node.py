@@ -7,6 +7,7 @@ from geometry_msgs.msg import Pose, PoseArray
 
 CUP_NAMES = ['cup_blue', 'cup_red', 'cup_blue_filled', 'cup_red_filled']
 
+REAL_ORIGIN_IN_GZ = (0.12, 1.695, 2.395)
 
 class CupNode(Node):
     """Subscribes to Gazebo pose topics for each cup and publishes positions as PoseArray."""
@@ -25,6 +26,7 @@ class CupNode(Node):
             )
 
         self._publisher = self.create_publisher(PoseArray, '/cup_positions', 10)
+        self._publisher_real = self.create_publisher(PoseArray, '/cup_positions_real', 10)
         self.create_timer(0.1, self._publish_positions)
         self.get_logger().info('Cup node started.')
 
@@ -38,6 +40,13 @@ class CupNode(Node):
         msg.poses = [self._poses[name] for name in CUP_NAMES if name in self._poses]
         self._publisher.publish(msg)
 
+        # Publish the real positions add REAL_ORIGIN_IN_GZ (with z inverted) for the real robot to use
+        for pose in msg.poses:
+            pose.position.x += REAL_ORIGIN_IN_GZ[0]
+            pose.position.y += REAL_ORIGIN_IN_GZ[1]
+            pose.position.z = -pose.position.z
+            pose.position.z += REAL_ORIGIN_IN_GZ[2]
+        self._publisher_real.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

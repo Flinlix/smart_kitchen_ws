@@ -28,6 +28,33 @@ from std_msgs.msg import Float32
 
 
 # ---------------------------------------------------------------------------
+# Internal utilities
+# ---------------------------------------------------------------------------
+
+def _transform_to_matrix(ts: TransformStamped) -> np.ndarray:
+    """Convert a TransformStamped to a 4 × 4 homogeneous transform matrix.
+
+    The rotation quaternion (x, y, z, w) is converted to a 3 × 3 rotation
+    matrix using the standard formula so that no external quaternion library
+    is required.
+    """
+    t = ts.transform.translation
+    q = ts.transform.rotation
+    x, y, z, w = q.x, q.y, q.z, q.w
+
+    R = np.array([
+        [1 - 2*(y*y + z*z),  2*(x*y - z*w),      2*(x*z + y*w)     ],
+        [2*(x*y + z*w),      1 - 2*(x*x + z*z),  2*(y*z - x*w)     ],
+        [2*(x*z - y*w),      2*(y*z + x*w),       1 - 2*(x*x + y*y) ],
+    ], dtype=float)
+
+    M = np.eye(4)
+    M[:3, :3] = R
+    M[:3, 3] = [t.x, t.y, t.z]
+    return M
+
+
+# ---------------------------------------------------------------------------
 # Pure helper functions
 # ---------------------------------------------------------------------------
 
@@ -64,6 +91,76 @@ def compute_full_position(
 ) -> Tuple[float, float, float]:
     """Add carriage X offset and lift Z offset to a gripper position."""
     return (gripper_xyz[0], gripper_xyz[1] + carriage_y, gripper_xyz[2] + lift_z)
+
+
+def lookup_aruco_in_base_link(
+    tf_buffer: tf2_ros.Buffer,
+    base_frame: str = "base_link",
+    gripper_frame: str = "robotiq_85_base_link",
+    aruco_frame: str = "aruco_marker",
+    timeout_sec: float = 0.0,
+) -> Tuple[float, float, float]:
+    """Return the (x, y, z) position of *aruco_frame* expressed in *base_frame*.
+
+    The function chains the two intermediate transforms::
+
+        base_frame  ──T₁──►  gripper_frame  ──T₂──►  aruco_frame
+
+    by composing their 4 × 4 homogeneous matrices:
+
+        T_base_to_aruco = T_base_to_gripper  @  T_gripper_to_aruco
+
+    The translation column of the result gives the marker's (x, y, z)
+    coordinates relative to *base_frame*.
+
+    Parameters
+    ----------
+    tf_buffer:
+        A live ``tf2_ros.Buffer`` that already holds the relevant transforms.
+    base_frame:
+        Root frame – typically ``"base_link"``.
+    gripper_frame:
+        Intermediate frame attached to the camera / gripper –
+        typically ``"robotiq_85_base_link"``.
+    aruco_frame:
+        Name of the TF frame that the ArUco detector broadcasts for the
+        detected marker (e.g. ``"aruco_marker_0"``).
+    timeout_sec:
+        How long to wait for each transform before raising an exception.
+        ``0.0`` means return immediately (use the latest cached transform).
+
+    Returns
+    -------
+    tuple[float, float, float]
+        ``(x, y, z)`` of the ArUco marker origin in *base_frame* coordinates.
+
+    Raises
+    ------
+    tf2_ros.LookupException, tf2_ros.ConnectivityException,
+    tf2_ros.ExtrapolationException
+        If either of the required transforms is not available.
+    """
+    timeout = Duration(seconds=timeout_sec) if timeout_sec > 0 else Duration()
+
+    # T₁ : base_frame → gripper_frame
+    ts_base_to_gripper = tf_buffer.lookup_transform(
+        base_frame, gripper_frame, Time(), timeout=timeout
+    )
+    # T₂ : gripper_frame → aruco_frame
+    ts_gripper_to_aruco = tf_buffer.lookup_transform(
+        gripper_frame, aruco_frame, Time(), timeout=timeout
+    )
+
+    M_base_to_gripper = _transform_to_matrix(ts_base_to_gripper)
+    M_gripper_to_aruco = _transform_to_matrix(ts_gripper_to_aruco)
+
+    # T_base_to_aruco  =  T₁ · T₂
+    M_base_to_aruco = M_base_to_gripper @ M_gripper_to_aruco
+
+    x = float(M_base_to_aruco[0, 3])
+    y = float(M_base_to_aruco[1, 3])
+    z = float(M_base_to_aruco[2, 3])
+    return (x, y, z)
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +204,8 @@ class PositionTracker:
         return self._tf_buffer
 
     @property
-    def carriage_x(self) -> float:
-        return self._carriage_x
+    def carriage_y(self) -> float:
+        return self._carriage_y
 
     @property
     def lift_z(self) -> float:
@@ -125,7 +222,22 @@ class PositionTracker:
     def get_full_position(self, timeout_sec: float = 0.0) -> Tuple[float, float, float]:
         """Gripper position with carriage (X) and lift (Z) offsets applied."""
         return compute_full_position(
-            self.get_gripper_tf(timeout_sec), self._carriage_x, self._lift_z,
+            self.get_gripper_tf(timeout_sec), self._carriage_y, self._lift_z,
+        )
+
+    def get_aruco_in_base_link(
+        self,
+        aruco_frame: str = "aruco_marker",
+        base_frame: str = "base_link",
+        gripper_frame: str = "robotiq_85_base_link",
+        timeout_sec: float = 0.0,
+    ) -> Tuple[float, float, float]:
+        """(x, y, z) of *aruco_frame* expressed in *base_frame*.
+
+        Delegates to :func:`lookup_aruco_in_base_link`.
+        """
+        return lookup_aruco_in_base_link(
+            self._tf_buffer, base_frame, gripper_frame, aruco_frame, timeout_sec
         )
 
 

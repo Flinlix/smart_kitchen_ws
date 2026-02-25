@@ -21,6 +21,9 @@ ros2 topic echo /joint_states
 
 ## Write:
 
+# Move to home
+ros2 action send_goal /execute_command smart_kitchen_interfaces/action/ExecuteCommand "{command_name: 'home'}"
+
 # Move Carriage
 ros2 topic pub --once /elmo/id1/carriage/position/set std_msgs/msg/Float32 "{data: 2.9}"
 # EMERGENCY STOP Carriage

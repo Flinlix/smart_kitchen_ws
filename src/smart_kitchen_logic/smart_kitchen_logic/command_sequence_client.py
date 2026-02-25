@@ -26,9 +26,9 @@ class CommandSequenceClient(Node):
         # Define the sequence of commands to execute
         self._command_sequence = [
             {'command_name': 'home', 'cup_id': ''},
-            {'command_name': 'pick_cup', 'cup_id': 'cup_1'},
-            {'command_name': 'to_sink', 'cup_id': ''},
-            {'command_name': 'drop_cup', 'cup_id': ''},
+            {'command_name': 'start_detecting', 'cup_id': ''},
+            {'command_name': 'full_pick_and_drop_1', 'cup_id': '1'},
+            {'command_name': 'full_pick_and_drop_2', 'cup_id': '2'},
             {'command_name': 'home', 'cup_id': ''},
         ]
         
