@@ -102,7 +102,7 @@ class CommandSequenceClient(Node):
     def _publish_human_pose_false(self) -> None:
         """Publish False on both /human_pose/left and /human_pose/right every 2 seconds."""
         msg = Bool()
-        msg.data = True
+        msg.data = False
         self._human_left_pub.publish(msg)
         self._human_right_pub.publish(msg)
 
