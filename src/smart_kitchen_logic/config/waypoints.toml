@@ -16,7 +16,7 @@ lift = 0.2500
 [sink_to_drop]
 joints = [-0.047770, -0.376303, -1.374767, -0.141893, -0.622643, -1.450347]
 time_from_start = 5.0
-carriage = -0.3000
+carriage = -0.5000
 lift = 0.3000
 
 [detect_cups_table]
@@ -40,7 +40,7 @@ lift = 0.2500
 [intermediate]
 joints = [1.536851, -0.788005, -1.241049, -0.079345, -1.084686, -1.509984]
 time_from_start = 5.0
-carriage = -0.3000
+carriage = 0.0000
 lift = 0.2500
 
 [intermediate_center_room]
@@ -61,6 +61,12 @@ time_from_start = 5.0
 carriage = 0.2000
 lift = 0.4500
 
+[post_pick_1]
+joints = [-0.168348, -0.630465, -0.738769, 0.136561, -1.514146, -1.570642]
+time_from_start = 5.0
+carriage = 0.2000
+lift = 0.3500
+
 [pre_pick_2]
 joints = [-2.979833, -0.575134, -0.170605, -0.177551, -1.902677, -1.644874]
 time_from_start = 5.0
@@ -73,17 +79,11 @@ time_from_start = 5.0
 carriage = 1.0000
 lift = 0.4500
 
-[safety]
-joints = [1.654999, -0.433036, 0.025205, 1.382681, -1.685287, -1.174203]
-time_from_start = 5.0
-carriage = 0.0000
-lift = 0.2500
-
-[post_safety]
-joints = [1.654999, -0.433036, 0.025205, 1.382681, -1.685287, -1.174203]
+[post_pick_2]
+joints = [-3.060809, -0.599117, -0.892191, -0.245897, -1.228932, -1.524807]
 time_from_start = 5.0
 carriage = 1.0000
-lift = 0.2500
+lift = 0.3500
 
 [pre_pick_3]
 joints = [2.364731, 0.183100, -0.100240, 0.112898, -1.218070, -1.523173]
@@ -101,4 +101,16 @@ lift = 0.3800
 joints = [0.472272, -0.259501, -0.523614, 1.095602, -1.529605, -1.685531]
 time_from_start = 5.0
 carriage = 0.0000
+lift = 0.2500
+
+[safety]
+joints = [1.654999, -0.433036, 0.025205, 1.382681, -1.685287, -1.174203]
+time_from_start = 5.0
+carriage = 0.0000
+lift = 0.2500
+
+[post_safety]
+joints = [1.654999, -0.433036, 0.025205, 1.382681, -1.685287, -1.174203]
+time_from_start = 5.0
+carriage = 1.0000
 lift = 0.2500

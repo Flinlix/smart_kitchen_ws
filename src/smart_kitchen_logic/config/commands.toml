@@ -20,11 +20,11 @@ waypoints = ["pick", "close_gripper"]
 
 [pick_cup_1]
 description = "Pick up cup 1 from counter"
-waypoints = ["pre_pick_1", "pick_1", "close_gripper", "pre_pick_1"]
+waypoints = ["pre_pick_1", "pick_1", "close_gripper", "post_pick_1"]
 
 [pick_cup_2]
 description = "Pick up cup 2 from table"
-waypoints = ["pre_pick_2", "pick_2", "close_gripper", "pre_pick_2"]
+waypoints = ["pre_pick_2", "pick_2", "close_gripper", "post_pick_2"]
 
 [pick_cup_3]
 description = "Pick up cup 3 from table"
@@ -47,12 +47,12 @@ description = "Move from table safely to counter"
 waypoints = ["post_safety", "safety", "pre_safety", "intermediate"]
 
 [unsafe_to_table]
-description = "Move from intermediate to table without safety (for testing)"
+description = "Move from intermediate to table without safety"
 waypoints = ["intermediate_center_room"]
 
 [full_pick_and_drop_1]
 description = "Full pick and drop sequence for cup 1 (after detection)"
-waypoints = [ "intermediate", "pre_pick_1", "pick_1", "close_gripper", "carry", "sink_to_drop", "open_gripper", "intermediate"]
+waypoints = [ "intermediate", "pre_pick_1", "pick_1", "close_gripper", "sink_to_drop", "open_gripper", "intermediate"]
 
 [full_pick_and_drop_2]
 description = "Full pick and drop sequence for cup 2 (after detection)"
