@@ -112,7 +112,7 @@ Defines **commands** as lists of waypoint names (e.g. `pick_cup_1` → `pre_pick
 
 You can add new waypoints and commands without changing code; just extend the TOML files and use the same node binaries.  
 
-Those can be automatically captured from a robot state using the package ...TODO:
+Those can be automatically captured from a robot state using the package `smart_kitchen_pose_teaching` ([smart_kitchen_pose_teaching README](../smart_kitchen_pose_teaching/README.md))
 
 ---
 
