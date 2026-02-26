@@ -61,6 +61,8 @@ ARM_JOINT_NAMES = [
 # The last link is the end_effector_link, which is fixed.
 ARM_CHAIN_LEN = 8
 ACTIVE_MASK = [False, True, True, True, True, True, True, False]
+# Freeze joint_4 (index 4) and joint_6 (index 6) during IK solving
+IK_ACTIVE_MASK = [False, True, True, True, False, True, False, False]
 
 
 class PlanningNode(Node):
@@ -262,21 +264,28 @@ class PlanningNode(Node):
     # ═══════════════════════════════════════════════════════════════════════
 
     def compute_ik(self, pose: Pose) -> list[float] | None:
-        """Compute joint angles for a base_link-frame pose. Returns None on failure."""
+        """Compute joint angles for a base_link-frame pose. Returns None on failure.
+
+        Joint 4 and joint 6 are frozen at their current values — only joints
+        1, 2, 3, 5 are optimised by the IK solver.
+        """
         if self._chain is None:
             self.get_logger().error('IK chain not ready')
             return None
 
         target = np.array([pose.position.x, pose.position.y, pose.position.z])
-        # Using the current pose as the seed makes IK converge to a solution near the current configuration and avoids jumps to other joint-space solutions.
         seed = self._build_ik_seed()
 
+        original_mask = list(self._chain.active_links_mask)
         try:
+            self._chain.active_links_mask = list(IK_ACTIVE_MASK)
             ik = self._chain.inverse_kinematics(
                 target_position=target, initial_position=seed)
         except Exception as e:
             self.get_logger().error(f'IK failed: {e}')
             return None
+        finally:
+            self._chain.active_links_mask = original_mask
 
         fk = self._chain.forward_kinematics(ik)[:3, 3]
         err = np.linalg.norm(fk - target)
@@ -517,6 +526,9 @@ class PlanningNode(Node):
     def _run_init_sequence(self):
         """Init → scan environment → init.  Sets _initialized on success."""
         self.get_logger().info('=== Init sequence: running "init" command ===')
+        if not self.execute_command('init'):
+            self.get_logger().error('init command failed, will retry next tick')
+            return
         if not self.execute_command('init'):
             self.get_logger().error('init command failed, will retry next tick')
             return
