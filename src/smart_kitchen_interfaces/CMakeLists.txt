@@ -8,6 +8,7 @@ find_package(action_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveToJoints.action"
   "action/ExecuteCommand.action"
+  "action/PickPlace.action"
   DEPENDENCIES action_msgs
 )
 

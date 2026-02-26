@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+"""Safety Monitor Node — watches the distance between the robot end-effector and a nearby human.
+
+Subscribes:
+  /human_position  (geometry_msgs/Point)  — 3-D position of the human in the world frame,
+                                            published by fake_human_node (simulation) or a
+                                            real human-tracking system
+
+Publishes:
+  /emergency_stop  (std_msgs/Bool)        — True when the human surface distance falls below
+                                            0.5 m; False once the area is clear again
+
+Internally uses TF2 to look up the current position of 'end_effector_link' in the 'world' frame at 10 Hz.  The safety margin is computed as the horizontal (XY) distance from the end-effector to the human centre minus an assumed human radius of 0.25 m.
+
+⚠️  NOTE: This node is implemented for future work and is currently NOT integrated into the running system.  The /emergency_stop topic it publishes is subscribed to by
+robot_controller_node, but the safety monitor is not started in any of the current launch configurations or run scripts.  Wiring it into the stack is left as a future improvement.
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -18,7 +34,7 @@ class SafetyMonitorNode(Node):
         self.human_position = None
 
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self) # to get gripper position
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.stop_publisher = self.create_publisher(Bool, '/emergency_stop', 10)
         
