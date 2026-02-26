@@ -521,19 +521,9 @@ class PlanningNode(Node):
             self.get_logger().error('init command failed, will retry next tick')
             return
         
-        self.get_logger().info('=== intermediate sequence: running "intermediate" command ===')
-        if not self.execute_command('intermediate'):
-            self.get_logger().error('intermediate command failed, will retry next tick')
-            return
-
-        self.get_logger().info('=== Scanning: running "start_detecting" command ===')
-        if not self.execute_command('start_detecting'):
-            self.get_logger().error('start_detecting failed, will retry next tick')
-            return
-
-        self.get_logger().info('=== Returning to init position ===')
-        if not self.execute_command('intermediate'):
-            self.get_logger().error('Return-to-intermediate failed, will retry next tick')
+        self.get_logger().info('=== dynamic scan sequence: running "dynamic_scan" command ===')
+        if not self.execute_command('dynamic_scan'):
+            self.get_logger().error('dynamic_scan command failed, will retry next tick')
             return
 
         with self._lock:

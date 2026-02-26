@@ -55,8 +55,8 @@ description = "Intermediate position for safe movement"
 waypoints = ["intermediate"]
 
 [dynamic_scan]
-description = "Intermediate position for safe movement"
-waypoints = ["intermediate", "intermediate_table"]
+description = "Scan for dynmamic cup detection and movement"
+waypoints = ["intermediate", "intermediate_table", "intermediate"]
 
 [full_pick_and_drop_1]
 description = "Full pick and drop sequence for cup 1 (after detection)"
