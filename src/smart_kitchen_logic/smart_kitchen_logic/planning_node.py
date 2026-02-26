@@ -89,10 +89,10 @@ class PlanningNode(Node):
         self._aruco_tags: dict[int, dict] = {}
 
         self.declare_parameter("aruco_distances_topic", "/aruco_distances")
-        self.declare_parameter("aruco_distances_frame", "camera_link")
+        self.declare_parameter("aruco_distances_frame", "camera_color_frame")
         aruco_topic = self.get_parameter("aruco_distances_topic").value
         self._aruco_distances_frame = self.get_parameter("aruco_distances_frame").value
-
+        self.get_logger().info(f'Aruco distances topic: {aruco_topic}, frame: {self._aruco_distances_frame}')
         self.create_subscription(
             Float32MultiArray, aruco_topic, self._on_aruco_distances, 10)
 
