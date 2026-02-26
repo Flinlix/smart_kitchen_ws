@@ -3,9 +3,9 @@
 <package format="3">
   <name>smart_kitchen_logic</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Package to implement the logic for the robot application.</description>
   <maintainer email="ros2-jazzy@todo.todo">ros2-jazzy</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>

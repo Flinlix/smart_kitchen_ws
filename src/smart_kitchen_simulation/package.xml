@@ -1,16 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>aruco_tracker</name>
+  <name>smart_kitchen_simulation</name>
   <version>0.0.0</version>
-  <description>Package for detecting aruco tags</description>
+  <description>Creating mocking and additional nodes for simulate kitchen setup in gazebo</description>
   <maintainer email="felix.lindenmeier@campus.lmu.de">ros2-jazzy</maintainer>
   <license>MIT</license>
-
-  <depend>rclpy</depend>
-  <depend>tf2_ros</depend>
-  <depend>geometry_msgs</depend>
-  <depend>aruco_opencv_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
