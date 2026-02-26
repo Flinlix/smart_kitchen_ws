@@ -7,7 +7,7 @@ from geometry_msgs.msg import Pose, PoseArray
 
 CUP_NAMES = ['cup_blue', 'cup_red', 'cup_blue_filled', 'cup_red_filled']
 
-REAL_ORIGIN_IN_GZ = (0.12, 1.695, 2.395)
+REAL_ORIGIN_IN_GZ = (0.12, 1.56, 2.395)
 
 class CupNode(Node):
     """Subscribes to Gazebo pose topics for each cup and publishes positions as PoseArray."""

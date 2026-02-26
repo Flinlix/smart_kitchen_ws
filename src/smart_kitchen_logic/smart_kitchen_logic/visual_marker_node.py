@@ -23,7 +23,7 @@ MODEL_NAME = 'visual_marker'
 
 # TODO: set the desired positions (x, y, z in metres)
 
-REAL_ORIGIN_IN_GZ = (0.12, 1.695, 2.395)  # smart_kitchen origin in Gazebo world coordinates
+REAL_ORIGIN_IN_GZ = (0.12, 1.56, 2.395)  # smart_kitchen origin in Gazebo world coordinates
 
 # (distance, carriage, lift)
 POSITION_A = (0.5, 1.7, 0.96)
