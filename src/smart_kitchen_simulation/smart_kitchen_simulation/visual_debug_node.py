@@ -29,7 +29,7 @@ MODEL_NAME = 'visual_marker'
 REAL_ORIGIN_IN_GZ = (0.12, 1.56, 2.395)  # smart_kitchen origin in Gazebo world coordinates
 
 # (distance, carriage, lift)
-POSITION_A = (0.5, 1.7, 0.96)
+POSITION_A = (0.0, 0.0, 0.0)
 POSITION_B = (0.0, 0.0, 0.0)
 
 # Seconds between each jump

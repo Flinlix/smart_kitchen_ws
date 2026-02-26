@@ -1,9 +1,12 @@
 Commands
 
-# Initialize robot arm itself:
-Start Camera:
+## Initialize
+
+# Wrist camera
 ros2 launch kinova_vision kinova_vision.launch.py launch_depth:=false device:=10.163.18.200
 
+# Wall mounted camera
+ros2 launch azure_kinect_ros_driver driver.launch.py
 
 
 ## Read:
