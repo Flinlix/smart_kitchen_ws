@@ -17,6 +17,7 @@
   <depend>trajectory_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>smart_kitchen_interfaces</depend>
+  <depend>python3-ikpy-pip</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
