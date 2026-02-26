@@ -51,6 +51,12 @@ time_from_start = 5.0
 carriage = 0.0000
 lift = 0.2500
 
+[intermediate_swipe]
+joints = [1.536851, -0.788005, -1.241049, -0.079345, -1.304686, -1.509984]
+time_from_start = 5.0
+carriage = 0.0000
+lift = 0.2500
+
 [intermediate_center_room]
 joints = [1.536850, -0.788002, -1.241045, -0.079342, -1.084683, -1.509986]
 time_from_start = 5.0

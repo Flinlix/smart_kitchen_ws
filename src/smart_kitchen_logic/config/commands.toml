@@ -43,7 +43,7 @@ waypoints = ["detect_cups_table", "detect_cups_sink", "detect_cups_swipe"]
 
 [dynamic_scan]
 description = "Scan for dynmamic cup detection and movement"
-waypoints = ["intermediate", "intermediate_table", "intermediate"]
+waypoints = ["intermediate", "intermediate_swipe", "intermediate_table", "intermediate"]
 
 
 # CUP COMMANDS
