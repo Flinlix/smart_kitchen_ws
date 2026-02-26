@@ -47,6 +47,10 @@ GRIPPER_CLOSED = 0.5
 GRIPPER_OPEN = 0.0
 GRIPPER_MAX_EFFORT = 50.0
 
+# Global carriage position limits (used in move_to_aruco)
+CARRIAGE_MIN = -0.51
+CARRIAGE_MAX = 1.0
+
 ARM_JOINT_NAMES = [
     'joint_1', 'joint_2', 'joint_3',
     'joint_4', 'joint_5', 'joint_6',
@@ -128,21 +132,6 @@ class PlanningNode(Node):
         else:
             self.get_logger().warn(
                 'No carriage position received within 2s; using 0.0 until /elmo/id1/carriage/position/get publishes')
-
-        # ── Lift (Z-axis) ─────────────────────────────────────────────────
-        self._move_lift_pub = self.create_publisher(
-            Float32, '/move_lift_goal', 10)
-        self._lift_done = threading.Event()
-        self._lift_success = False
-        self.create_subscription(
-            Bool, '/move_lift_result', self._on_lift_result, 10)
-
-        # ── Gripper action client ─────────────────────────────────────────
-        self._gripper_client = ActionClient(
-            self, GripperCommandAction,
-            '/robotiq_gripper_controller/gripper_cmd')
-        self._grip_done = threading.Event()
-        self._grip_success = False
 
         # ── Execute command action client (command_executor) ──────────────
         self._execute_command_client = ActionClient(
@@ -318,6 +307,7 @@ class PlanningNode(Node):
         """
         with self._lock:
             entry = self._aruco_tags.get(marker_id)
+            # Only process tags 4 and 0 for now
             if marker_id != 4 and marker_id != 0:
                 return False
 
@@ -325,7 +315,10 @@ class PlanningNode(Node):
             self.get_logger().error(f'No valid pose for aruco {marker_id}')
             return False
 
-        self._release() # Open gripper
+        if not self.execute_command('gripper_open'):
+            self.get_logger().error(f'Gripper open command failed, will retry next tick')
+            return False
+
         # Snapshot current arm pose and carriage position so we can return afterwards
         home_joints = [self._current_joints[n] for n in ARM_JOINT_NAMES]
         start_carriage_x = self._carriage_x
@@ -334,7 +327,12 @@ class PlanningNode(Node):
             f'Moving to aruco {marker_id} '
             f'(global_x={entry["global_x"]:.3f}, dist={entry["distance"]:.3f}m)')
 
-        if not self._move_carriage(entry['global_x']):
+        carriage_goal = max(CARRIAGE_MIN, min(CARRIAGE_MAX, float(entry['global_x'])))
+        if carriage_goal != entry['global_x']:
+            self.get_logger().info(
+                f'Carriage goal clamped to [{CARRIAGE_MIN}, {CARRIAGE_MAX}]: {entry["global_x"]:.3f} → {carriage_goal:.3f}')
+
+        if not self._move_carriage(carriage_goal):
             self.get_logger().error(f'Carriage alignment failed for aruco {marker_id}')
             return False
 
@@ -358,15 +356,15 @@ class PlanningNode(Node):
         success = self.move_to_pose(ik_pose)
 
         if success:
-            if not self._grip():
-                self.get_logger().error(f'Grip failed for aruco {marker_id}')
-                success = False
+            if not self.execute_command('gripper_close'):
+                self.get_logger().error(f'Gripper close command failed, will retry next tick')
 
         self.get_logger().info(f'Returning arm to pre-approach pose')
         self._send_joint_goal(home_joints)
 
         self.get_logger().info(f'Returning carriage to start position ({start_carriage_x:.3f})')
-        if not self._move_carriage(start_carriage_x):
+        return_carriage = max(CARRIAGE_MIN, min(CARRIAGE_MAX, start_carriage_x))
+        if not self._move_carriage(return_carriage):
             self.get_logger().error('Carriage return to start failed')
 
         return success
@@ -438,76 +436,6 @@ class PlanningNode(Node):
     def _on_carriage_position(self, msg: Float32) -> None:
         self._carriage_x = msg.data
         self._carriage_position_received.set()
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Lift control (Z-direction)
-    # ═══════════════════════════════════════════════════════════════════════
-
-    def _move_lift(self, z: float) -> bool:
-        """Send lift goal to moving_node and block until done."""
-        self._lift_done.clear()
-        self._lift_success = False
-        self.get_logger().info(f'Lift goal → {z:.3f}')
-        self._move_lift_pub.publish(Float32(data=float(z)))
-
-        if not self._lift_done.wait(timeout=MOVE_TIMEOUT_SEC):
-            self.get_logger().error('Lift move timed out!')
-            return False
-        if not self._lift_success:
-            self.get_logger().error(f'Lift move to {z:.3f} failed!')
-            return False
-
-        self.get_logger().info(f'Lift at {z:.3f}.')
-        return True
-
-    def _on_lift_result(self, msg: Bool) -> None:
-        self._lift_success = msg.data
-        self._lift_done.set()
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Gripper control
-    # ═══════════════════════════════════════════════════════════════════════
-
-    def _send_gripper_goal(self, position: float, label: str) -> bool:
-        if not self._gripper_client.wait_for_server(timeout_sec=10.0):
-            self.get_logger().error('Gripper action server not available!')
-            return False
-
-        goal = GripperCommandAction.Goal()
-        goal.command.position = position
-        goal.command.max_effort = GRIPPER_MAX_EFFORT
-
-        self._grip_done.clear()
-        self._grip_success = False
-
-        self.get_logger().info(f'{label} (position={position:.2f})')
-        future = self._gripper_client.send_goal_async(goal)
-        future.add_done_callback(self._gripper_goal_response)
-
-        if not self._grip_done.wait(timeout=GRIP_TIMEOUT_SEC):
-            self.get_logger().error(f'{label} timed out!')
-            return False
-
-        return self._grip_success
-
-    def _gripper_goal_response(self, future) -> None:
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().error('Gripper goal rejected.')
-            self._grip_done.set()
-            return
-        goal_handle.get_result_async().add_done_callback(self._gripper_result)
-
-    def _gripper_result(self, future) -> None:
-        status = future.result().status
-        self._grip_success = (status == GoalStatus.STATUS_SUCCEEDED)
-        self._grip_done.set()
-
-    def _grip(self) -> bool:
-        return self._send_gripper_goal(GRIPPER_CLOSED, 'Closing gripper')
-
-    def _release(self) -> bool:
-        return self._send_gripper_goal(GRIPPER_OPEN, 'Opening gripper')
 
     # ═══════════════════════════════════════════════════════════════════════
     # Execute command (command_executor action)

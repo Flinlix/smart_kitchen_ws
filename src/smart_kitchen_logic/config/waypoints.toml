@@ -56,6 +56,12 @@ time_from_start = 5.0
 carriage = 0.3000
 lift = 0.2500
 
+[intermediate_table]
+joints = [1.536850, -0.788002, -1.241045, -0.079342, -1.084683, -1.509986]
+time_from_start = 5.0
+carriage = 1.0000
+lift = 0.2500
+
 [pre_pick_1]
 joints = [-0.168348, -0.630476, -0.738772, 0.136560, -1.514149, -1.570641]
 time_from_start = 5.0
