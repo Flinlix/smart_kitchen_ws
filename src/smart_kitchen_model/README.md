@@ -19,10 +19,5 @@
 | `config/sim_ros2_controllers.yaml` | ros2_control controller configuration for simulation (arm trajectory controller, rail trajectory controller, gripper). |
 | `launch/smart_kitchen.launch.py` | Main launch file. Starts `robot_state_publisher`, Gazebo, ros2_control, all controllers, and optionally RViz. Key arguments: `sim_gazebo`, `robot_type`, `dof`, `vision`, `gripper`, `launch_rviz`. |
 
-## 🚀 How to Run
 
-```bash
-colcon build --packages-select smart_kitchen_model
-source install/setup.bash
-ros2 launch smart_kitchen_model smart_kitchen.launch.py sim_gazebo:=true
-```
+For further simulation details see [smart_kitchen_simualtion README](../smart_kitchen_simulation/README.md).

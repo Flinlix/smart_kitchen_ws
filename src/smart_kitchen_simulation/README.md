@@ -24,9 +24,10 @@
 ## 🚀 How to Run
 
 In practice all simulation nodes are launched together with the rest of the system via `smart_kitchen.launch.py` in the `smart_kitchen_model` package. 
-To build and run the simulation within gazebo, execute from the root of this repository: 
+To build and run the simulation within gazebo, execute: 
 
 ```bash
+cd smart_kitchen_ws
 run_sim
 ```
 
