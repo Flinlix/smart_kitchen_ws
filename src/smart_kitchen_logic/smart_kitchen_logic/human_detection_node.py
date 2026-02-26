@@ -11,12 +11,20 @@ from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
 
+# Subscription topics
+RGB_IMAGE_TOPIC = '/rgb/image_raw'
+RGB_CAMERA_INFO_TOPIC = '/rgb/camera_info'
+
+# Publication topics
+LEFT_HUMAN_TOPIC  = '/human_detection/left'
+RIGHT_HUMAN_TOPIC = '/human_detection/right'
+
 # Debug
 DEBUG_LOG = False
 DEBUG_SAVE_IMAGES = False
 
 # Maximum processing rate (Hz; None -> unlimited)
-MAX_PROCESS_HZ = 0.1
+MAX_PROCESS_HZ = 2
 
 # Class ID for 'person'
 PERSON_CLASS_ID = 0
@@ -79,18 +87,18 @@ class HumanDetectionNode(Node):
         qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=1)
         self.subscription = self.create_subscription(
             Image,
-            '/k4a/rgb/image_raw',
+            RGB_IMAGE_TOPIC,
             self.image_callback,
             qos
         )
 
-        self.left_pub  = self.create_publisher(Bool, '/human_detection/left',  10)
-        self.right_pub = self.create_publisher(Bool, '/human_detection/right', 10)
+        self.left_pub  = self.create_publisher(Bool, LEFT_HUMAN_TOPIC,  10)
+        self.right_pub = self.create_publisher(Bool, RIGHT_HUMAN_TOPIC, 10)
 
         # One-shot subscription to check camera distortion
         self._camera_info_sub = self.create_subscription(
             CameraInfo,
-            '/k4a/rgb/camera_info',
+            RGB_CAMERA_INFO_TOPIC,
             self._camera_info_callback,
             1
         )
@@ -104,7 +112,7 @@ class HumanDetectionNode(Node):
         self._last_process_time = 0.0
         self._min_interval = 1.0 / MAX_PROCESS_HZ if MAX_PROCESS_HZ else 0.0
 
-        self.get_logger().info('Human Detection Node started, listening on /k4a/rgb/image_raw')
+        self.get_logger().info(f'Human Detection Node started, listening on {RGB_IMAGE_TOPIC}')
 
     def _camera_info_callback(self, msg: CameraInfo):
         self._camera_matrix = np.array(msg.k, dtype=np.float64).reshape(3, 3)
