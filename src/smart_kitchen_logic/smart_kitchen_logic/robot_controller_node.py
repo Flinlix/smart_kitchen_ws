@@ -12,7 +12,7 @@ Internally forwards every goal to the joint_trajectory_controller via
 FollowJointTrajectory and maps the outcome back to the action result.
 
 Emergency stop: subscribing to /emergency_stop (std_msgs/Bool) cancels
-the in-flight trajectory and aborts the active action goal.
+the in-flight trajectory and aborts the active action goal. (Emergency stop topic is unused at the current stage of the project, but implemented for future safety integration.)
 """
 
 import threading
