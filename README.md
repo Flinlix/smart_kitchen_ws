@@ -34,12 +34,13 @@ This workspace contains everything needed to run a Kinova arm in a kitchen scena
 ```
 smart_kitchen_ws/
 ├── src/
-│   ├── smart_kitchen_interfaces/  # Message, service & action definitions
-│   ├── smart_kitchen_model/       # Gazebo world, robot & object models
-│   ├── smart_kitchen_simulation/  # Simulation-only mock & bridge nodes (Gazebo)
-│   ├── smart_kitchen_logic/       # Main robot logic — real-world executor
-│   └── aruco_tracker/             # ArUco marker detection & 3D pose (vision)
-└── run_sim                        # Script to run the simulation
+│   ├── smart_kitchen_interfaces/    # Message, service & action definitions
+│   ├── smart_kitchen_model/         # Gazebo world, robot & object models
+│   ├── smart_kitchen_simulation/    # Simulation-only mock & bridge nodes (Gazebo)
+│   ├── smart_kitchen_logic/         # Main robot logic — real-world executor
+│   ├── smart_kitchen_pose_teaching/ # Teach tools for recording & replaying robot poses
+│   └── aruco_tracker/               # ArUco marker detection & 3D pose (vision)
+└── run_sim                          # Script to run the simulation
 ```
 
 ---
@@ -53,6 +54,7 @@ smart_kitchen_ws/
 | **`smart_kitchen_simulation`** | **Simulation support** — Mock nodes for Gazebo: ELMO rail/lift simulator, fake human position, cup position export, TF helpers, visual debug. Use this **only in simulation**. |
 | **`smart_kitchen_logic`** | **Main robot real-world executor** — High-level behavior: command sequences, arm/gripper control, human detection, fixed waypoints or dynamic ArUco + IK. Runs on the **real robot** (and can be tested in sim with the simulation packages). |
 | **`aruco_tracker`** | **Vision / perception** — ArUco marker detection from a camera stream, 3D pose in camera frame, publishes distances and IDs. Used by **dynamic** mode in `smart_kitchen_logic` on real hardware. |
+| **`smart_kitchen_pose_teaching`** | **Teach-in tooling** — CLI utilities to record the current arm + carriage + lift state into `positions.toml`, replay named positions, and test the gripper. Used to capture the waypoints that `smart_kitchen_logic` consumes. Kindly shared by Group 3. |
 
 ---
 
@@ -62,6 +64,7 @@ smart_kitchen_ws/
 - [**smart_kitchen_simulation**](src/smart_kitchen_simulation/README.md) — Simulation nodes (rail simulator, fake human, cup positions, visual debug, TF helpers).
 - [**aruco_tracker**](src/aruco_tracker/README.md) — ArUco detection, 3D pose, parameters and topic layout.
 - [**smart_kitchen_model**](src/smart_kitchen_model/README.md) — Gazebo world, robot URDF/Xacro, SDF models (cups, kitchen, static human, visual marker). Used only when running in **Gazebo**.
+- [**smart_kitchen_pose_teaching**](src/smart_kitchen_pose_teaching/README.md) — Teach-in tools for recording, replaying, and testing robot poses. Shared by Group 3.
 
 ---
 
