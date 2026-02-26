@@ -59,7 +59,7 @@ class ArucoAllDistance(Node):
                 f"Unknown aruco_dictionary '{self.dict_name}'. Options: {list(ARUCO_DICTS.keys())}"
             )
 
-        # OpenCV ArUco setup (support old and new detector APIs)
+        # OpenCV ArUco setup
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICTS[self.dict_name])
         self.detector_params = cv2.aruco.DetectorParameters()
         self.use_new_detector_api = hasattr(cv2.aruco, "ArucoDetector")

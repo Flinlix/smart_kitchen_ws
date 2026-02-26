@@ -2,7 +2,7 @@ from setuptools import setup
 from glob import glob
 import os
 
-package_name = "aruco_human_tracker"
+package_name = "aruco_tracker"
 
 setup(
     name=package_name,
@@ -17,12 +17,12 @@ setup(
     zip_safe=True,
     maintainer="ros2-jazzy",
     maintainer_email="felix.lindenmeier@campus.lmu.de",
-    description="Convert aruco_opencv detections into a human pose in base_link",
+    description="Convert aruco_opencv detections in base_link coordinates",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "aruco_all_distance = aruco_human_tracker.aruco_all_distance_node:main",
+            "aruco_all_distance = aruco_tracker.aruco_all_distance_node:main",
         ],
     },
 )

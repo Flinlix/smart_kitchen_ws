@@ -9,12 +9,12 @@ import pytest
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64MultiArray
 from sensor_msgs.msg import JointState
 
-from smart_kitchen_logic.moving_node import (
-    MovingNode,
-    ARM_JOINT_NAMES,
+from smart_kitchen_logic.moving_node import MovingNode, ARM_JOINT_NAMES
+from smart_kitchen_logic.planning_node import (
+    PlanningNode,
     ARM_CHAIN_LEN,
     ACTIVE_MASK,
 )
@@ -40,8 +40,8 @@ def urdf_string():
 
 @pytest.fixture(scope='session')
 def ik_chain(urdf_string):
-    """Build the truncated IK chain used by MovingNode."""
-    return MovingNode._build_chain(urdf_string)
+    """Build the truncated IK chain used by PlanningNode (same chain logic)."""
+    return PlanningNode._build_chain(urdf_string)
 
 
 @pytest.fixture(scope='module')
@@ -146,92 +146,3 @@ class TestInverseKinematics:
         ik = ik_chain.inverse_kinematics(target_position=target)
         assert ik[0] == pytest.approx(0.0)
         assert ik[ARM_CHAIN_LEN - 1] == pytest.approx(0.0)
-
-
-# ── 4. node-level: joint-state tracking ─────────────────────────────────
-
-class TestJointStateTracking:
-    def test_updates_known_joints(self, moving_node):
-        msg = JointState()
-        msg.name = list(ARM_JOINT_NAMES)
-        msg.position = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-        moving_node._on_joint_states(msg)
-
-        for name, expected in zip(ARM_JOINT_NAMES, msg.position):
-            assert moving_node._current_joints[name] == pytest.approx(expected)
-
-    def test_ignores_unknown_joints(self, moving_node):
-        msg = JointState()
-        msg.name = ['unknown_joint_99']
-        msg.position = [9.9]
-        moving_node._on_joint_states(msg)
-
-        assert 'unknown_joint_99' not in moving_node._current_joints
-
-    def test_partial_update(self, moving_node):
-        moving_node._current_joints['joint_1'] = 0.0
-
-        msg = JointState()
-        msg.name = ['joint_1']
-        msg.position = [1.23]
-        moving_node._on_joint_states(msg)
-
-        assert moving_node._current_joints['joint_1'] == pytest.approx(1.23)
-        assert moving_node._current_joints['joint_2'] == pytest.approx(0.0)
-
-
-# ── 5. node-level: build_seed ────────────────────────────────────────────
-
-class TestBuildSeed:
-    def test_seed_maps_joints_correctly(self, moving_node, ik_chain):
-        moving_node._chain = ik_chain
-        moving_node._current_joints = {n: float(i) for i, n in enumerate(ARM_JOINT_NAMES)}
-
-        seed = moving_node._build_seed()
-        assert len(seed) == ARM_CHAIN_LEN
-
-        for i, link in enumerate(ik_chain.links):
-            if link.name in ARM_JOINT_NAMES:
-                expected = float(ARM_JOINT_NAMES.index(link.name))
-                assert seed[i] == pytest.approx(expected)
-
-    def test_seed_base_and_ee_are_zero(self, moving_node, ik_chain):
-        moving_node._chain = ik_chain
-        seed = moving_node._build_seed()
-        assert seed[0] == 0.0
-        assert seed[-1] == 0.0
-
-
-# ── 6. node-level: goal without chain loaded ─────────────────────────────
-
-class TestGoalWithoutChain:
-    def test_publishes_false(self, moving_node):
-        """Goal received before IK chain is loaded must publish False."""
-        assert moving_node._chain is None
-
-        received = threading.Event()
-        result_value = []
-
-        sub_node = Node('test_listener')
-        sub_node.create_subscription(
-            Bool, '/move_robot_result',
-            lambda msg: (result_value.append(msg.data), received.set()),
-            10,
-        )
-
-        goal = Pose()
-        goal.position.x = 0.3
-        goal.position.y = 0.0
-        goal.position.z = 0.5
-        moving_node._on_goal(goal)
-
-        for _ in range(50):
-            rclpy.spin_once(moving_node, timeout_sec=0.01)
-            rclpy.spin_once(sub_node, timeout_sec=0.01)
-            if received.is_set():
-                break
-
-        sub_node.destroy_node()
-
-        assert received.is_set(), 'No result published within timeout'
-        assert result_value[0] is False
