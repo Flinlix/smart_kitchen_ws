@@ -42,3 +42,9 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 
 # Close Gripper
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.8, max_effort: 100.0}}"
+
+
+# BASE_LINK FRAME IS Z TO THE BOTTOM, Y POSITIVE INTO THE WALL, X CARRIAGE MOVE POSITIVE zur spühle
+# CAMERA FRAME IS INVERTED TO THE GRIPPER FRAME
+# CAMERA FRAME: Z OUT, X TO THE RIGHT, Y DOWN
+# GRIPPER FRAME: Z OUT, X TO THE LEFT, Y UP

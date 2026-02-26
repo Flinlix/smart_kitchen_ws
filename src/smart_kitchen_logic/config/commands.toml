@@ -61,3 +61,7 @@ waypoints = [ "intermediate_center_room", "pre_pick_2", "pick_2", "close_gripper
 [full_pick_and_drop_3]
 description = "Full pick and drop sequence for cup 3 (after detection)"
 waypoints = [ "intermediate_center_room", "pre_pick_3", "pick_3", "close_gripper", "pre_pick_3", "sink_to_drop", "open_gripper", "intermediate"]
+
+[intermediate]
+description = ""
+waypoints = ["intermediate"]

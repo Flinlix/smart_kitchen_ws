@@ -152,6 +152,7 @@ class PlanningNode(Node):
 
         # ── Main loop (own callback group so blocking doesn't starve subs) ─
         self._processed_tags: set[int] = set()
+        self._initialized = False
         self._timer_cb_group = MutuallyExclusiveCallbackGroup()
         self._main_timer = self.create_timer(
             2.0, self._main_loop, callback_group=self._timer_cb_group)
@@ -332,12 +333,23 @@ class PlanningNode(Node):
             self.get_logger().error(f'Carriage alignment failed for aruco {marker_id}')
             return False
 
+        # Now at the tag's x position — wait briefly for fresh aruco readings,
+        # then use the latest (likely more accurate) pose.
+        time.sleep(2.0)
+        with self._lock:
+            refreshed = self._aruco_tags.get(marker_id)
+        if refreshed is not None and refreshed['pose'] is not None:
+            self.get_logger().info(
+                f'Refreshed aruco {marker_id} after carriage move '
+                f'(dist={refreshed["distance"]:.3f}m, was {entry["distance"]:.3f}m)')
+            entry = refreshed
+
         p = entry['pose'].position
         ik_pose = Pose()
         ik_pose.position.x = 0.0
         ik_pose.position.y = p.y
         ik_pose.position.z = p.z
-        ik_pose.orientation = entry['pose'].orientation # maybe the orientation changes when we move the carriage, but i think orientation is never used by IK
+        ik_pose.orientation = entry['pose'].orientation
         success = self.move_to_pose(ik_pose)
 
         if success:
@@ -540,22 +552,16 @@ class PlanningNode(Node):
     # ═══════════════════════════════════════════════════════════════════════
 
     def _main_loop(self):
-        """For each unprocessed tag: align carriage, then solve IK."""
-        # BASE_LINK FRAME IS Z TO THE BOTTOM, Y POSITIVE INTO THE WALL, X CARRIAGE MOVE POSITIVE zur spühle
-        # CAMERA FRAME IS INVERTED TO THE GRIPPER FRAME
-        # CAMERA FRAME: Z OUT, X TO THE RIGHT, Y DOWN
-        # GRIPPER FRAME: Z OUT, X TO THE LEFT, Y UP
+        """Init → scan → process each aruco tag."""
+        if not self._initialized:
+            self._run_init_sequence()
+            return
+
         tags = self.get_aruco_tags()
         if not tags:
             return
-    
-        # TODO: WHAT I NEED TO CHANGE ON WEDNESDAY
-        # FIRST: INVERSE KINEMATICS WORKS ONLY IF WE ACTUALLY CAN REACH THE TAG WITH THE ARM
-        # BEFORE WE CAN ONLY MOVE THE CARRIAGE TO THE GLOBAL Y POSITION AND THEN WE NEED TO RESCAN, because robot has other joints as it might had when noticed the cup first
-        # THEREFORE WE NEED TO MOVE TO THE GLOBAL Y POSITION, GO INTO A SCANNING POSITION AND THEN IF WE SEE THE TAG WITHIN REACH, WE CAN GRAP IT
 
         for mid, entry in tags.items():
-            self.get_logger().info(f'Tag {mid}: {entry}')
             if mid in self._processed_tags:
                 continue
             if entry['pose'] is None:
@@ -565,12 +571,41 @@ class PlanningNode(Node):
             self.get_logger().info(
                 f'[Main] Tag {mid}: local=({p.x:.3f}, {p.y:.3f}, {p.z:.3f}), '
                 f'global_x={entry["global_x"]:.3f}, dist={entry["distance"]:.3f}m')
-            
+
             if not self.move_to_aruco(mid):
                 self.get_logger().error(f'[Main] Failed on tag {mid}')
                 continue
-
+            
+            if not self.execute_command('drop_cup'):
+                self.get_logger().error('Drop cup command failed, will retry next tick')
+                continue
+            if not self.execute_command('init'):
+                self.get_logger().error('Init command failed, will retry next tick')
+                continue
             self._processed_tags.add(mid)
+
+    def _run_init_sequence(self):
+        """Init → scan environment → init.  Sets _initialized on success."""
+        self.get_logger().info('=== Init sequence: running "init" command ===')
+        if not self.execute_command('intermediate'):
+            self.get_logger().error('Intermediate command failed, will retry next tick')
+            return
+
+        self.get_logger().info('=== Scanning: running "start_detecting" command ===')
+        if not self.execute_command('start_detecting'):
+            self.get_logger().error('start_detecting failed, will retry next tick')
+            return
+
+        self.get_logger().info('=== Returning to init position ===')
+        if not self.execute_command('init'):
+            self.get_logger().error('Return-to-intermediate failed, will retry next tick')
+            return
+
+        with self._lock:
+            n_tags = len(self._aruco_tags)
+        self.get_logger().info(
+            f'=== Init sequence complete. Detected {n_tags} aruco tag(s) ===')
+        self._initialized = True
 
 
 def main(args=None):
@@ -578,9 +613,6 @@ def main(args=None):
     node = PlanningNode()
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)
-    # while not node.execute_command('home'):
-    #     node.get_logger().error('Failed to execute home command')
-    #     time.sleep(5)
     try:
         executor.spin()
     except KeyboardInterrupt:
