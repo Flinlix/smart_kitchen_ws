@@ -1,8 +1,8 @@
-# 🍳 Smart Kitchen Workspace
+# 🍳🦾 Smart Kitchen Workspace
 
 **ROS 2 Jazzy workspace** for a smart kitchen robot: pick cups, drop them at the sink, and react to humans—in **simulation** (Gazebo) or on **real hardware**. 
 
-Developed by Group 4, "Mind the Bro, Bot!" for the Human-Robot-Interaction practical at Ludwig-Maximilian-University Munich.
+*Developed by Group 4, "Mind the Bro, Bot!" for the Human-Robot-Interaction practical at Ludwig-Maximilian-University Munich, February 2026.*
 
 ---
 
@@ -61,8 +61,7 @@ smart_kitchen_ws/
 - [**smart_kitchen_logic**](src/smart_kitchen_logic/README.md) — Main robot logic, fixed/dynamic modes, nodes, config, how to run on real hardware.
 - [**smart_kitchen_simulation**](src/smart_kitchen_simulation/README.md) — Simulation nodes (rail simulator, fake human, cup positions, visual debug, TF helpers).
 - [**aruco_tracker**](src/aruco_tracker/README.md) — ArUco detection, 3D pose, parameters and topic layout.
-
-*(`smart_kitchen_interfaces` and `smart_kitchen_model` are interface/model packages without separate READMEs; see `package.xml` and the structure above.)*
+- [**smart_kitchen_model**](src/smart_kitchen_model/README.md) — Gazebo world, robot URDF/Xacro, SDF models (cups, kitchen, static human, visual marker). Used only when running in **Gazebo**.
 
 ---
 
@@ -86,7 +85,6 @@ So: **simulation = `smart_kitchen_simulation` + `smart_kitchen_model`**; **real 
 cd smart_kitchen_ws
 # Building will be done automatically when running the simulation
 run_sim
-# Then start smart_kitchen_logic nodes as needed for testing in sim
 ```
 
 **Real robot:**
