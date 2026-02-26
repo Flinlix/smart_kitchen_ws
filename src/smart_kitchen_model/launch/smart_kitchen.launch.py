@@ -62,7 +62,7 @@ def launch_setup(context, *args, **kwargs):
     if sim_gazebo.perform(context).lower() == "true":
         robot_controllers = PathJoinSubstitution(
             [
-                FindPackageShare("smart_kitchen_description"),
+                FindPackageShare("smart_kitchen_model"),
                 "config",
                 "sim_ros2_controllers.yaml",
             ]
@@ -85,7 +85,7 @@ def launch_setup(context, *args, **kwargs):
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution(
-                [FindPackageShare("smart_kitchen_description"), "urdf", "kitchen_robot.xacro"]
+                [FindPackageShare("smart_kitchen_model"), "urdf", "kitchen_robot.xacro"]
             ),
             " ",
             "robot_ip:=xxx.yyy.zzz.www",
@@ -212,7 +212,7 @@ def launch_setup(context, *args, **kwargs):
         "GZ_SIM_RESOURCE_PATH", os.path.join(robotiq_description_prefix, "share")
     )
 
-    smart_kitchen_share = get_package_share_directory("smart_kitchen_description")
+    smart_kitchen_share = get_package_share_directory("smart_kitchen_model")
     gz_smart_kitchen_models_env = AppendEnvironmentVariable(
         "GZ_SIM_RESOURCE_PATH", os.path.join(smart_kitchen_share, "models")
     )

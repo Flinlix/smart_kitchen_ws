@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=== Cleaning previous build artifacts ==="
-rm -rf build/smart_kitchen_description install/smart_kitchen_description log/smart_kitchen_description
+rm -rf build/smart_kitchen_model install/smart_kitchen_model log/smart_kitchen_model
 rm -rf build/smart_kitchen_logic install/smart_kitchen_logic log/smart_kitchen_logic
 
 echo "=== Sourcing base workspaces ==="
 source /opt/ros/jazzy/setup.bash
 source /home/ros2-jazzy/workspace/ros2_kortex_ws/install/setup.bash
 
-echo "=== Building smart_kitchen_description and smart_kitchen_logic ==="
-colcon build --symlink-install --packages-select smart_kitchen_description smart_kitchen_logic
+echo "=== Building smart_kitchen_model and smart_kitchen_logic ==="
+colcon build --symlink-install --packages-select smart_kitchen_model smart_kitchen_logic
 
 echo "=== Sourcing workspace ==="
 source install/setup.bash
 
 echo "=== Launching smart_kitchen ==="
-ros2 launch smart_kitchen_description smart_kitchen.launch.py "$@"
+ros2 launch smart_kitchen_model smart_kitchen.launch.py "$@"
