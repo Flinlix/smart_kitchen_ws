@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Visual Marker Node – cycles a purely-visual Gazebo sphere between two positions.
+"""
+Visual Debug Node:
+
+Cycles a purely-visual Gazebo sphere between two positions.
 
 The marker jumps to POSITION_A, waits 2 seconds, then jumps to POSITION_B,
 waits 2 seconds, and repeats indefinitely.
@@ -33,11 +36,11 @@ POSITION_B = (0.0, 0.0, 0.0)
 JUMP_INTERVAL_SEC = 2.0
 
 
-class VisualMarkerNode(Node):
+class VisualDebugNode(Node):
     """ROS2 node that cycles a purely-visual Gazebo marker between two positions."""
 
     def __init__(self) -> None:
-        super().__init__('visual_marker_node')
+        super().__init__('visual_debug_node')
 
         self._at_a: bool = False  # toggles which position to jump to next
 
@@ -110,7 +113,7 @@ class VisualMarkerNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = VisualMarkerNode()
+    node = VisualDebugNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

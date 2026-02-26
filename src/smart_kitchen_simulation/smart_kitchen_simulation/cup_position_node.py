@@ -9,11 +9,11 @@ CUP_NAMES = ['cup_blue', 'cup_red', 'cup_blue_filled', 'cup_red_filled']
 
 REAL_ORIGIN_IN_GZ = (0.12, 1.56, 2.395)
 
-class CupNode(Node):
+class CupPositionNode(Node):
     """Subscribes to Gazebo pose topics for each cup and publishes positions as PoseArray."""
     
     def __init__(self):
-        super().__init__('cup_node')
+        super().__init__('cup_position_node')
 
         self._poses: dict[str, Pose] = {}
 
@@ -28,7 +28,7 @@ class CupNode(Node):
         self._publisher = self.create_publisher(PoseArray, '/cup_positions', 10)
         self._publisher_real = self.create_publisher(PoseArray, '/cup_positions_real', 10)
         self.create_timer(0.1, self._publish_positions)
-        self.get_logger().info('Cup node started.')
+        self.get_logger().info('Cup position node started.')
 
     def _on_pose(self, name: str, msg: Pose) -> None:
         self._poses[name] = msg
@@ -50,7 +50,7 @@ class CupNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = CupNode()
+    node = CupPositionNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

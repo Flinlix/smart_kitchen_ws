@@ -37,9 +37,9 @@ JOINT_NAMES = [
 ]
 
 
-class RobotMoverNode(Node):
+class RobotControllerNode(Node):
     def __init__(self):
-        super().__init__('robot_mover_node')
+        super().__init__('robot_controller_node')
 
         # ReentrantCallbackGroup lets the execute_callback block on an Event
         # while other callbacks (trajectory result, emergency stop) still run.
@@ -78,7 +78,7 @@ class RobotMoverNode(Node):
         self._traj_message = ''
 
         self.get_logger().info(
-            'Robot Mover Node started. Action server /move_to_joints is ready.')
+            'Robot Controller Node started. Action server /move_to_joints is ready.')
 
     # ── /move_to_joints server: goal / cancel ─────────────────────────────
 
@@ -223,7 +223,7 @@ class RobotMoverNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = RobotMoverNode()
+    node = RobotControllerNode()
 
     # MultiThreadedExecutor is required so that _execute_callback can block
     # on threading.Event while trajectory / emergency-stop callbacks still run.

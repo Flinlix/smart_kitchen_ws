@@ -5,15 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=== Cleaning previous build artifacts ==="
+rm -rf build/smart_kitchen_interfaces install/smart_kitchen_interfaces log/smart_kitchen_interfaces
 rm -rf build/smart_kitchen_model install/smart_kitchen_model log/smart_kitchen_model
 rm -rf build/smart_kitchen_logic install/smart_kitchen_logic log/smart_kitchen_logic
+rm -rf build/smart_kitchen_simulation install/smart_kitchen_simulation log/smart_kitchen_simulation
+rm -rf build/aruco_tracker install/aruco_tracker log/aruco_tracker
 
 echo "=== Sourcing base workspaces ==="
 source /opt/ros/jazzy/setup.bash
 source /home/ros2-jazzy/workspace/ros2_kortex_ws/install/setup.bash
 
-echo "=== Building smart_kitchen_model and smart_kitchen_logic ==="
-colcon build --symlink-install --packages-select smart_kitchen_model smart_kitchen_logic
+echo "=== Building all smart_kitchen packages ==="
+colcon build --symlink-install --packages-select smart_kitchen_interfaces smart_kitchen_model smart_kitchen_logic smart_kitchen_simulation aruco_tracker
 
 echo "=== Sourcing workspace ==="
 source install/setup.bash

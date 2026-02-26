@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Rail position relay node:
+Rail simulator node:
 
-Subscribes to three Float32 topics (one per axis) and forwards the
+Subscribes to four Float32 topics (one per axis and yaw) and forwards the
 commanded positions to the rail_trajectory_controller.
 
 Topics (in):
-  /elmo/id1/carriage/position/set  (std_msgs/Float32)  [values are inverted: -1 → 1]
-  /rail/y/position/set  (std_msgs/Float32)
+  /elmo/id1/carriage/position/set  (std_msgs/Float32; Values are inverted)
   /elmo/id1/lift/position/set  (std_msgs/Float32)
-  /rail/yaw/position/set  (std_msgs/Float32)
+
+  
+  (optional) /rail/y/position/set  (std_msgs/Float32)
+  (optional) /rail/yaw/position/set  (std_msgs/Float32)
 
 Topics (out):
-  /elmo/id1/carriage/position/get  (std_msgs/Float32)  [published at 10 Hz, reflects last commanded value]
-  /elmo/id1/lift/position/get      (std_msgs/Float32)  [published at 10 Hz, reflects last commanded value]
+  /elmo/id1/carriage/position/get  (std_msgs/Float32; Published at 10 Hz, reflects last commanded value)
+  /elmo/id1/lift/position/get      (std_msgs/Float32; Published at 10 Hz, reflects last commanded value)
 
 The Float32 value is used directly as the joint position in metres.
 """
@@ -28,13 +30,13 @@ from builtin_interfaces.msg import Duration
 JOINT_NAMES = ['rail_x_joint', 'rail_y_joint', 'rail_z_joint', 'rail_yaw_joint']
 CONTROLLER_TOPIC = '/rail_trajectory_controller/joint_trajectory'
 
-# How long the controller should take to reach the commanded position (s)
+# How long the controller should take to reach the commanded position (in seconds, for simplicity)
 MOVE_DURATION_SEC = 2
 
 
-class FakeRailNode(Node):
+class RailSimulatorNode(Node):
     def __init__(self):
-        super().__init__('fake_rail_node')
+        super().__init__('rail_simulator_node')
 
         # Current commanded positions (start at 0): x, y, z, yaw
         self._positions = [0.0, 0.0, 0.0, 0.0]
@@ -58,14 +60,6 @@ class FakeRailNode(Node):
 
         # Timer: publish /get topics at 10 Hz
         self.create_timer(0.1, self._publish_get_topics)
-
-        self.get_logger().info(
-            'Rail node ready.\n'
-            '  /elmo/id1/carriage/position/set  →  rail_x_joint (inverted)\n'
-            '  /rail/y/position/set    →  rail_y_joint\n'
-            '  /elmo/id1/lift/position/set    →  rail_z_joint\n'
-            '  /rail/yaw/position/set  →  rail_yaw_joint'
-        )
 
     def _on_set(self, axis: int, msg: Float32, scale: float = 1.0):
         """Receive a position command for one axis and publish a trajectory."""
@@ -105,7 +99,7 @@ class FakeRailNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FakeRailNode()
+    node = RailSimulatorNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
