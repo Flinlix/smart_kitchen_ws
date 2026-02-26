@@ -45,15 +45,15 @@ import time
 from pathlib import Path
 
 WAYPOINT_PATH = (
-    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
+    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
 )
 
 COMMANDS_PATH = (
-    Path.home() / 'workspace' / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
+    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
 )
 
 DEFAULT_DURATION_SEC = 3.0
-DEFAULT_WAITING_SEC = 0.5
+DEFAULT_WAITING_SEC = 0.25
 
 GRIPPER_WAYPOINTS = ['open_gripper', 'close_gripper']
 CUP_COMMAND = ['pick_cup']
@@ -292,7 +292,7 @@ class CommandExecutorNode(Node):
         if not success:
             self.get_logger().error(f'Gripper action failed: {message}')
             
-        self._sleep(DEFAULT_WAITING_SEC)  # Wait briefly after gripper action
+        self._sleep(DEFAULT_WAITING_SEC/2)  # Wait briefly after gripper action
         
         return success
 

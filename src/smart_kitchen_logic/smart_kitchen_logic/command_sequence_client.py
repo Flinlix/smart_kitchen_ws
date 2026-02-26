@@ -42,12 +42,9 @@ class CommandSequenceClient(Node):
         self._consecutive_no_human = 0       # both false (for check_side 'either')
         self._consecutive_no_human_left = 0  # left false (for check_side 'left')
         self._consecutive_no_human_right = 0 # right false (for check_side 'right')
-        self._human_left_pub = self.create_publisher(Bool, '/human_pose/left', 10)
-        self._human_right_pub = self.create_publisher(Bool, '/human_pose/right', 10)
-        self.create_subscription(Bool, '/human_pose/left', self._human_left_cb, 10)
-        self.create_subscription(Bool, '/human_pose/right', self._human_right_cb, 10)
+        self.create_subscription(Bool, '/human_detection/left', self._human_left_cb, 10)
+        self.create_subscription(Bool, '/human_detection/right', self._human_right_cb, 10)
         # Publish False on both human_pose topics every 2 seconds (keeps topics active)
-        self.create_timer(5.0, self._publish_human_pose_false)
 
         # Decision point handling
         self._decision_point_timer = None
@@ -98,13 +95,6 @@ class CommandSequenceClient(Node):
     def _human_right_cb(self, msg: Bool) -> None:
         self._human_right = msg.data
         self._human_right_history.append(msg.data)
-
-    def _publish_human_pose_false(self) -> None:
-        """Publish False on both /human_pose/left and /human_pose/right every 2 seconds."""
-        msg = Bool()
-        msg.data = False
-        self._human_left_pub.publish(msg)
-        self._human_right_pub.publish(msg)
 
     def _update_consecutive_no_human(self) -> None:
         """Update all consecutive-no-human counters (called each decision-point tick)."""
