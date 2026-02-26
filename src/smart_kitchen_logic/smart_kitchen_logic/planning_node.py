@@ -245,17 +245,20 @@ class PlanningNode(Node):
                     pose_camera.position.z = z
                     pose_camera.orientation.w = 1.0
                     pose_base = do_transform_pose(pose_camera, tf)
-                    self._aruco_tags[mid] = {
-                        'pose': pose_base,
-                        'distance': dist,
-                        # Carriage moves in X; base_link moves with it.
-                        # If carriage value decreases when moving left but base_link X increases left,
-                        # use minus so the carriage goal has the correct sign.
-                        'global_x': self._carriage_x - pose_base.position.x,
-                    }
-                    self.get_logger().info(f'Aruco {mid}: calculated pose_base = {pose_base}')
-                    self.get_logger().info(
-                        f'Aruco {mid}: updated (dist={dist:.3f}m)')
+                    
+                    if (pose_base.position.x < 1.0) and (pose_base.position.y < 1.0) and (pose_base.position.z < 1.0):
+                        self._aruco_tags[mid] = {
+                            'pose': pose_base,
+                            'distance': dist,
+                            # Carriage moves in X; base_link moves with it.
+                            # If carriage value decreases when moving left but base_link X increases left,
+                            # use minus so the carriage goal has the correct sign.
+                            'global_x': self._carriage_x - pose_base.position.x,
+                        }
+                        self.get_logger().info(f'Aruco {mid}: calculated pose_base = {pose_base}')
+                        self.get_logger().info(f'Aruco {mid}: updated (dist={dist:.3f}m)')
+                    self.get_logger().info(f'Aruco SKIPPED {mid}: calculated pose_base = {pose_base}')
+                    
                 except TransformException as e:
                     self.get_logger().warn(
                         f'TF failed for marker {mid}: {e}')
@@ -315,6 +318,8 @@ class PlanningNode(Node):
         """
         with self._lock:
             entry = self._aruco_tags.get(marker_id)
+            if marker_id != 4 and marker_id != 0:
+                return False
 
         if entry is None or entry['pose'] is None:
             self.get_logger().error(f'No valid pose for aruco {marker_id}')
@@ -579,16 +584,18 @@ class PlanningNode(Node):
             if not self.execute_command('drop_cup'):
                 self.get_logger().error('Drop cup command failed, will retry next tick')
                 continue
-            if not self.execute_command('init'):
-                self.get_logger().error('Init command failed, will retry next tick')
-                continue
             self._processed_tags.add(mid)
 
     def _run_init_sequence(self):
         """Init → scan environment → init.  Sets _initialized on success."""
         self.get_logger().info('=== Init sequence: running "init" command ===')
+        if not self.execute_command('init'):
+            self.get_logger().error('init command failed, will retry next tick')
+            return
+        
+        self.get_logger().info('=== intermediate sequence: running "intermediate" command ===')
         if not self.execute_command('intermediate'):
-            self.get_logger().error('Intermediate command failed, will retry next tick')
+            self.get_logger().error('intermediate command failed, will retry next tick')
             return
 
         self.get_logger().info('=== Scanning: running "start_detecting" command ===')
@@ -597,7 +604,7 @@ class PlanningNode(Node):
             return
 
         self.get_logger().info('=== Returning to init position ===')
-        if not self.execute_command('init'):
+        if not self.execute_command('intermediate'):
             self.get_logger().error('Return-to-intermediate failed, will retry next tick')
             return
 
