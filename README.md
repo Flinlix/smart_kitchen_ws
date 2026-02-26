@@ -12,10 +12,10 @@ This workspace contains everything needed to run a Kinova arm in a kitchen scena
 
 ---
 
-## 🎬 Media
+## 🎬 ROS 2 Architecture
 
 ![Architecture](assets/ros2_architecture.png)
-
+![Small Pipeline](assets/small_pipeline.png)
 <!--
 ### Demo video
 [![Demo](optional-thumbnail-url)](optional-video-url)
