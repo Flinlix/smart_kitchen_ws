@@ -12,9 +12,9 @@ This workspace contains everything needed to run a Kinova arm in a kitchen scena
 
 ---
 
-## 🎬 Media (Videos & Pictures)
+## 🎬 Media
 
-*Placeholder: add links or embeds to demos, setup photos, and screenshots here.*
+![Architecture](assets/ros2_architecture.png)
 
 <!--
 ### Demo video
