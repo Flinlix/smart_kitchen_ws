@@ -43,14 +43,11 @@ from smart_kitchen_interfaces.action import ExecuteCommand, MoveToJoints
 import tomllib
 import time
 from pathlib import Path
+from ament_index_python.packages import get_package_share_directory
 
-WAYPOINT_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'waypoints.toml'
-)
-
-COMMANDS_PATH = (
-    Path.home() / 'smart_kitchen_ws' / 'src' / 'smart_kitchen_logic' / 'config' /'commands.toml'
-)
+package_share = get_package_share_directory('smart_kitchen_logic')
+WAYPOINT_PATH = Path(package_share) / 'config' / 'waypoints.toml'
+COMMANDS_PATH = Path(package_share) / 'config' / 'commands.toml'
 
 DEFAULT_DURATION_SEC = 3.0
 DEFAULT_WAITING_SEC = 0.25
