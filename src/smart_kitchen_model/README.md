@@ -1,14 +1,14 @@
-# 🏗️ Smart Kitchen Model
+# Smart Kitchen Model
 
 **URDF, Gazebo world, meshes, models, and the main launch file for the Smart Kitchen robot.**
 
 ---
 
-## 🎯 What Is This?
+## What Is This?
 
-`smart_kitchen_model` is a pure asset and configuration package — no runtime nodes. It holds everything needed to spawn and describe the robot in simulation or on real hardware.
+`smart_kitchen_model` is a pure asset and configuration package with no runtime nodes. It holds everything needed to spawn and describe the robot in simulation or on real hardware.
 
-## ✨ Contents
+## Contents
 
 | Path | Description |
 | ---- | ----------- |
