@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Generate ROS 2 architecture diagram — Dynamic (aruco-tracking / IK) approach."""
+
+import subprocess, os
+
+DOT = r"""
+digraph DynamicApproach {
+
+    graph [
+        fontname  = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize  = 18
+        label     = ""
+        pad       = "0.8,0.5"
+        nodesep   = 0.8
+        ranksep   = 0.9
+        bgcolor   = "white"
+        compound  = true
+        splines   = true
+        rankdir   = TB
+        size      = "12.8,7.2!"
+        ratio     = fill
+        dpi       = 150
+    ];
+
+    node [
+        fontname = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize = 10
+        shape    = box
+        style    = "filled,rounded"
+        penwidth = 1.3
+        margin   = "0.14,0.07"
+    ];
+
+    edge [
+        fontname  = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize  = 8
+        color     = "#555555"
+        penwidth  = 1.1
+        arrowsize = 0.7
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 1 — SENSORS & STATE
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_sensors {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#616161">Sensors &amp; State Providers</FONT></B>>
+        style     = "dashed,rounded"
+        color     = "#BDBDBD"
+        fillcolor = "#FAFAFA"
+        margin    = 14
+
+        realsense [label="RealSense\nCamera"            shape=box3d fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+        rsp       [label="Robot State Publisher\n+ TF2"  fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 2 — PERCEPTION
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_percep {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#1565C0">Perception</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#1565C0"
+        fillcolor = "#E3F2FD"
+        margin    = 14
+
+        aruco [label="aruco_all_distance\n(ArUco marker tracker)" fillcolor="#90CAF9" fontcolor="#0D47A1"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 3 — PLANNING
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_plan {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#2E7D32">Planning &amp; Orchestration</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#2E7D32"
+        fillcolor = "#E8F5E9"
+        margin    = 14
+
+        planning [label="planning_node\n(IK · aruco tracking · motion orchestration)" fillcolor="#81C784" fontcolor="#1B5E20"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 4 — EXECUTION
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_exec {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#4E342E">Execution Layer</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#795548"
+        fillcolor = "#EFEBE9"
+        margin    = 14
+
+        moving     [label="moving_node\n(joint / carriage / lift forwarder)"    fillcolor="#D7CCC8" fontcolor="#3E2723"]
+        cmd_exec   [label="command_executor_node\n(waypoint sequence executor)" fillcolor="#BCAAA4" fontcolor="#3E2723"]
+        robot_ctrl [label="robot_controller_node\n(MoveToJoints action server)" fillcolor="#D7CCC8" fontcolor="#3E2723"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 5 — HARDWARE
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_hw {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#616161">Hardware Controllers &amp; Actuators</FONT></B>>
+        style     = "dashed,rounded"
+        color     = "#BDBDBD"
+        fillcolor = "#FAFAFA"
+        margin    = 14
+
+        gripper [label="robotiq_gripper\n_controller"   fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+        elmo    [label="ELMO Drives\n(carriage + lift)" shape=box3d fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+        jtc     [label="joint_trajectory\n_controller"   fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       RANKING
+       ═══════════════════════════════════════════════════════════ */
+    { rank = same; realsense; rsp }
+    { rank = same; aruco }
+    { rank = same; planning }
+    { rank = same; moving; cmd_exec; robot_ctrl }
+    { rank = same; gripper; elmo; jtc }
+
+    /* ═══════════════════════════════════════════════════════════
+       SENSOR → PERCEPTION
+       ═══════════════════════════════════════════════════════════ */
+    realsense -> aruco [
+        label=<<FONT COLOR="#1565C0">/camera/color/image_raw<BR/>/camera/color/camera_info</FONT>>
+        color="#1976D2" penwidth=1.3
+    ];
+
+    rsp -> planning [
+        label=<<FONT COLOR="#546E7A">/robot_description<BR/>/joint_states · TF2</FONT>>
+        color="#78909C" penwidth=1.0
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       PERCEPTION → PLANNING
+       ═══════════════════════════════════════════════════════════ */
+    aruco -> planning [
+        label=<<B><FONT COLOR="#1565C0">/aruco_distances</FONT></B><BR/><FONT COLOR="#666666" POINT-SIZE="7">Float32MultiArray  [id, dist, x, y, z, …]</FONT>>
+        color="#1565C0" penwidth=1.6
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       PLANNING → MOVING NODE  (topic-based command loop)
+       ═══════════════════════════════════════════════════════════ */
+    planning -> moving [
+        label=<<FONT COLOR="#2E7D32"><B>/move_robot_goal</B>  (Float64MultiArray)<BR/><B>/move_carriage_goal</B>  (Float32)</FONT>>
+        color="#2E7D32" penwidth=1.3
+    ];
+
+    moving -> planning [
+        label=<<FONT COLOR="#78909C">/move_robot_result<BR/>/move_carriage_result  (Bool)</FONT>>
+        color="#90A4AE" style=dashed penwidth=0.9
+        constraint=false
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       PLANNING → COMMAND EXECUTOR  (for gripper, init, scan)
+       ═══════════════════════════════════════════════════════════ */
+    planning -> cmd_exec [
+        label=<<B><FONT COLOR="#E65100">/execute_command</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">ExecuteCommand action<BR/>(gripper, init, dynamic_scan)</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    cmd_exec -> robot_ctrl [
+        label=<<B><FONT COLOR="#E65100">/move_to_joints</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">MoveToJoints action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    cmd_exec -> gripper [
+        label=<<B><FONT COLOR="#E65100">/…/gripper_cmd</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">GripperCommand action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       EXECUTION → HARDWARE
+       ═══════════════════════════════════════════════════════════ */
+    moving -> jtc [
+        label=<<B><FONT COLOR="#E65100">/…/follow_joint_trajectory</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">FollowJointTrajectory action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    robot_ctrl -> jtc [
+        label=<<B><FONT COLOR="#E65100">/…/follow_joint_trajectory</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">FollowJointTrajectory action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    moving -> elmo [
+        label=<<FONT COLOR="#546E7A">/elmo/id1/{carriage,lift}/position/set</FONT>>
+        color="#78909C" penwidth=1.0
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       ELMO FEEDBACK
+       ═══════════════════════════════════════════════════════════ */
+    elmo -> planning [
+        label=<<FONT COLOR="#90A4AE">/elmo/id1/carriage/position/get</FONT>>
+        color="#B0BEC5" style=dashed penwidth=0.8
+        constraint=false
+    ];
+}
+"""
+
+OUT_DIR = "/home/ros2-jazzy/workspace/smart_kitchen_ws/assets"
+DOT_FILE = os.path.join(OUT_DIR, "dynamic_approach.dot")
+PNG_FILE = os.path.join(OUT_DIR, "dynamic_approach.png")
+SVG_FILE = os.path.join(OUT_DIR, "dynamic_approach.svg")
+
+with open(DOT_FILE, "w") as f:
+    f.write(DOT)
+
+for fmt, path in [("png", PNG_FILE), ("svg", SVG_FILE)]:
+    result = subprocess.run(
+        ["dot", f"-T{fmt}", "-o", path, DOT_FILE],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"ERROR ({fmt}): {result.stderr}")
+    else:
+        print(f"Generated: {path}")
+
+print("Done.")

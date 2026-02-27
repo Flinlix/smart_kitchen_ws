@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Generate ROS 2 architecture diagram — Fixed (waypoint-sequence) approach."""
+
+import subprocess, os
+
+DOT = r"""
+digraph FixedApproach {
+
+    graph [
+        fontname  = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize  = 18
+        label     = ""
+        pad       = "0.8,0.5"
+        nodesep   = 0.8
+        ranksep   = 0.9
+        bgcolor   = "white"
+        compound  = true
+        splines   = true
+        rankdir   = TB
+        size      = "12.8,7.2!"
+        ratio     = fill
+        dpi       = 150
+    ];
+
+    node [
+        fontname = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize = 10
+        shape    = box
+        style    = "filled,rounded"
+        penwidth = 1.3
+        margin   = "0.14,0.07"
+    ];
+
+    edge [
+        fontname  = "Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontsize  = 8
+        color     = "#555555"
+        penwidth  = 1.1
+        arrowsize = 0.7
+    ];
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 1 — SENSOR
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_sensors {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#616161">Sensor</FONT></B>>
+        style     = "dashed,rounded"
+        color     = "#BDBDBD"
+        fillcolor = "#FAFAFA"
+        margin    = 14
+
+        rgb_cam [label="RGB Overhead\nCamera" shape=box3d fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 2 — PERCEPTION
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_percep {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#1565C0">Perception</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#1565C0"
+        fillcolor = "#E3F2FD"
+        margin    = 14
+
+        human_det [label="human_detection_node\n(YOLO person detector)" fillcolor="#90CAF9" fontcolor="#0D47A1"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 3 — ORCHESTRATION
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_orch {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#2E7D32">Orchestration</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#2E7D32"
+        fillcolor = "#E8F5E9"
+        margin    = 14
+
+        cmd_seq [label="command_sequence_client\n(decision-point sequencer)" fillcolor="#A5D6A7" fontcolor="#1B5E20"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 4 — EXECUTION
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_exec {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#4E342E">Execution Layer</FONT></B>>
+        style     = "filled,rounded"
+        color     = "#795548"
+        fillcolor = "#EFEBE9"
+        margin    = 14
+
+        cmd_exec   [label="command_executor_node\n(waypoint sequence executor)"  fillcolor="#BCAAA4" fontcolor="#3E2723"]
+        robot_ctrl [label="robot_controller_node\n(MoveToJoints action server)"  fillcolor="#D7CCC8" fontcolor="#3E2723"]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LAYER 5 — HARDWARE
+       ═══════════════════════════════════════════════════════════ */
+    subgraph cluster_hw {
+        label     = <<B><FONT POINT-SIZE="11" COLOR="#616161">Hardware Controllers &amp; Actuators</FONT></B>>
+        style     = "dashed,rounded"
+        color     = "#BDBDBD"
+        fillcolor = "#FAFAFA"
+        margin    = 14
+
+        gripper [label="robotiq_gripper\n_controller"   fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+        elmo    [label="ELMO Drives\n(carriage + lift)" shape=box3d fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+        jtc     [label="joint_trajectory\n_controller"   fillcolor="#CFD8DC" fontcolor="#37474F" penwidth=0.8]
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       RANKING
+       ═══════════════════════════════════════════════════════════ */
+    { rank = same; rgb_cam }
+    { rank = same; human_det }
+    { rank = same; cmd_seq }
+    { rank = same; cmd_exec; robot_ctrl }
+    { rank = same; gripper; elmo; jtc }
+
+    /* ═══════════════════════════════════════════════════════════
+       EDGES
+       ═══════════════════════════════════════════════════════════ */
+
+    /* Sensor → Perception */
+    rgb_cam -> human_det [
+        label=<<FONT COLOR="#1565C0">/rgb/image_raw<BR/>/rgb/camera_info</FONT>>
+        color="#1976D2" penwidth=1.3
+    ];
+
+    /* Perception → Orchestration */
+    human_det -> cmd_seq [
+        label=<<B><FONT COLOR="#2E7D32">/human_detection/left</FONT></B><BR/><B><FONT COLOR="#2E7D32">/human_detection/right</FONT></B><BR/><FONT COLOR="#666666" POINT-SIZE="7">Bool — used at decision points</FONT>>
+        color="#388E3C" penwidth=1.6
+    ];
+
+    /* Orchestration → Execution (action) */
+    cmd_seq -> cmd_exec [
+        label=<<B><FONT COLOR="#E65100">/execute_command</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">ExecuteCommand action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    /* Execution → Execution (action chain) */
+    cmd_exec -> robot_ctrl [
+        label=<<B><FONT COLOR="#E65100">/move_to_joints</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">MoveToJoints action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    /* Execution → Hardware (actions) */
+    robot_ctrl -> jtc [
+        label=<<B><FONT COLOR="#E65100">/…/follow_joint_trajectory</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">FollowJointTrajectory action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    cmd_exec -> gripper [
+        label=<<B><FONT COLOR="#E65100">/…/gripper_cmd</FONT></B><BR/><FONT COLOR="#999999" POINT-SIZE="7">GripperCommand action</FONT>>
+        style=dashed color="#E65100" penwidth=1.4
+    ];
+
+    /* Execution → ELMO (topics) */
+    cmd_exec -> elmo [
+        label=<<FONT COLOR="#546E7A">/elmo/id1/{carriage,lift}/position/set</FONT>>
+        color="#78909C" penwidth=1.0
+    ];
+
+    /* ELMO feedback */
+    elmo -> cmd_exec [
+        label=<<FONT COLOR="#90A4AE">/elmo/id1/{carriage,lift}/position/get</FONT>>
+        color="#B0BEC5" style=dashed penwidth=0.8
+        constraint=false
+    ];
+}
+"""
+
+OUT_DIR = "/home/ros2-jazzy/workspace/smart_kitchen_ws/assets"
+DOT_FILE = os.path.join(OUT_DIR, "fixed_approach.dot")
+PNG_FILE = os.path.join(OUT_DIR, "fixed_approach.png")
+SVG_FILE = os.path.join(OUT_DIR, "fixed_approach.svg")
+
+with open(DOT_FILE, "w") as f:
+    f.write(DOT)
+
+for fmt, path in [("png", PNG_FILE), ("svg", SVG_FILE)]:
+    result = subprocess.run(
+        ["dot", f"-T{fmt}", "-o", path, DOT_FILE],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"ERROR ({fmt}): {result.stderr}")
+    else:
+        print(f"Generated: {path}")
+
+print("Done.")
